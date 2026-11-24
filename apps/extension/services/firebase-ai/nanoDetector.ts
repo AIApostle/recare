@@ -59,11 +59,18 @@ export class NanoDetector {
               testSession.destroy();
             }
           } catch (createErr: any) {
-            console.info('[Recare] Gemini Nano execution config is downloading/missing:', createErr?.message || createErr);
+            const errStr = (createErr?.message || String(createErr)).toLowerCase();
+            const isConfigMissing =
+              errStr.includes('execution config') ||
+              errStr.includes('download') ||
+              errStr.includes('not available');
+            console.info('[Recare] Gemini Nano status note:', createErr?.message || createErr);
             return {
               available: false,
-              status: 'unsupported',
-              message: 'Gemini Nano execution config is missing or downloading in chrome://components. Cloud inference will be used.',
+              status: isConfigMissing ? 'downloadable' : 'unsupported',
+              message: isConfigMissing
+                ? 'Gemini Nano execution config is missing or downloading. Check chrome://components -> Optimization Guide On Device Model.'
+                : `Gemini Nano initialization: ${createErr?.message || createErr}`,
             };
           }
         }

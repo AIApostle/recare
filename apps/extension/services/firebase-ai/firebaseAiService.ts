@@ -183,22 +183,35 @@ ${elements}
 Summarize the page purpose, main interactive controls, and recommended next action for the user.`;
 
     const nanoStatus = await NanoDetector.checkAvailability();
-    let modeEnum: InferenceMode = InferenceMode.ONLY_IN_CLOUD;
 
-    if (selectedMode === 'ONLY_ON_DEVICE' || selectedMode === 'PREFER_ON_DEVICE') {
-      if (nanoStatus.available && nanoStatus.status === 'ready') {
-        modeEnum = selectedMode === 'ONLY_ON_DEVICE' ? InferenceMode.ONLY_ON_DEVICE : InferenceMode.PREFER_ON_DEVICE;
-      } else {
-        console.info('[Recare] On-device Nano not ready, using Cloud inference mode.');
-        modeEnum = InferenceMode.ONLY_IN_CLOUD;
+    // 1. If Gemini Nano is ready on-device, execute directly locally (zero network latency)
+    if (nanoStatus.available && nanoStatus.status === 'ready') {
+      try {
+        const ai = (window as any)?.ai || (globalThis as any)?.ai;
+        if (ai?.languageModel?.create) {
+          const session = await ai.languageModel.create();
+          const localText = await session.prompt(prompt);
+          if (typeof session.destroy === 'function') session.destroy();
+          if (localText && localText.trim()) {
+            this.activeInferencePath = 'on_device';
+            return {
+              text: localText.trim(),
+              inferenceSource: 'on_device',
+              modelUsed: 'Gemini Nano 4 (On-Device)',
+            };
+          }
+        }
+      } catch (nanoErr: any) {
+        console.info('[Recare] On-device Nano execution deferred to cloud pipeline:', nanoErr?.message || nanoErr);
       }
     }
 
-    this.activeInferencePath = modeEnum === InferenceMode.ONLY_ON_DEVICE ? 'on_device' : 'in_cloud';
+    // 2. Otherwise try Firebase AI or Recare Backend Cloud Agent
+    this.activeInferencePath = 'in_cloud';
 
     try {
       const model = getGenerativeModel(this.ai, {
-        mode: modeEnum,
+        mode: InferenceMode.ONLY_IN_CLOUD,
       });
 
       const result = await model.generateContent(prompt);
@@ -216,9 +229,27 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         modelUsed: source === 'on_device' ? 'Gemini Nano 4 (On-Device)' : 'Gemini 2.5 Flash Lite (Cloud)',
       };
     } catch (err: any) {
-      console.warn('[Recare] Primary inference mode failed, attempting local on-device Gemini Nano fallback:', err);
+      console.info('[Recare] Direct cloud endpoint unavailable, using Recare Cloud Agent fallback:', err?.message || err);
 
-      // Fallback 1: Direct Chrome Built-in AI (window.ai / Prompt API)
+      // Fallback 1: Query live Recare Backend Agent (cascades Gemini Flash Lite -> 3.5 Flash Lite -> 3.8 Flash)
+      try {
+        const backendRes = await RecareApiClient.sendChat(
+          prompt,
+          pageContext,
+          'guide',
+          simplified
+        );
+        this.activeInferencePath = 'in_cloud';
+        return {
+          text: backendRes.reply,
+          inferenceSource: 'in_cloud',
+          modelUsed: 'Recare Cloud Agent (Gemini Multi-Model Fallback)',
+        };
+      } catch (backendErr: any) {
+        console.info('[Recare] Backend agent fallback note:', backendErr?.message || backendErr);
+      }
+
+      // Fallback 2: Direct Chrome Built-in AI (window.ai / Prompt API)
       if (typeof window !== 'undefined' && (window as any).ai?.languageModel) {
         try {
           const ai = (window as any).ai;
@@ -241,43 +272,7 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         }
       }
 
-      // Fallback 2: Direct cloud model via Firebase AI
-      if (modeEnum !== InferenceMode.ONLY_IN_CLOUD) {
-        try {
-          const cloudModel = getGenerativeModel(this.ai, {
-            mode: InferenceMode.ONLY_IN_CLOUD,
-          });
-          const cloudRes = await cloudModel.generateContent(prompt);
-          this.activeInferencePath = 'in_cloud';
-          return {
-            text: cloudRes.response.text(),
-            inferenceSource: 'in_cloud',
-            modelUsed: 'Gemini 2.5 Flash Lite (Cloud Fallback)',
-          };
-        } catch (cloudErr: any) {
-          console.warn('[Recare] Direct cloud inference also threw:', cloudErr);
-        }
-      }
-
-      // Fallback 3: Query backend chat agent (cascades through Gemini Flash Lite -> 3.5 Flash Lite -> 3.8 Flash)
-      try {
-        const backendRes = await RecareApiClient.sendChat(
-          prompt,
-          pageContext,
-          'guide',
-          simplified
-        );
-        this.activeInferencePath = 'in_cloud';
-        return {
-          text: backendRes.reply,
-          inferenceSource: 'in_cloud',
-          modelUsed: 'Recare Cloud Agent (Gemini Multi-Model Fallback)',
-        };
-      } catch (backendErr: any) {
-        console.warn('[Recare] Backend agent fallback also unavailable:', backendErr);
-      }
-
-      // Fallback 4: Grounded contextual summary from live DOM context (never leaves user stranded)
+      // Fallback 3: Grounded contextual summary from live DOM context (never leaves user stranded)
       this.activeInferencePath = 'idle';
       const keyControls = pageContext.interactive_elements
         .slice(0, 4)
@@ -350,10 +345,10 @@ If asking a question, reply clearly and concisely.`;
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (err: any) {
-      console.warn('[Recare] Cloud tool calling error:', err);
+      console.info('[Recare] Direct cloud function-calling unavailable, falling through to Recare task planner:', err?.message || err);
       this.activeInferencePath = 'idle';
       return {
-        text: `Recare processed your request for: "${userMessage}".`,
+        text: `Processing action for: "${userMessage}".`,
         inferenceSource: 'in_cloud',
         modelUsed: 'Cloud Fallback',
       };
