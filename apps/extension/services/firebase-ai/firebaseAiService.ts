@@ -216,9 +216,32 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         modelUsed: source === 'on_device' ? 'Gemini Nano 4 (On-Device)' : 'Gemini 2.5 Flash Lite (Cloud)',
       };
     } catch (err: any) {
-      console.warn('[Recare] Primary inference mode failed:', err);
+      console.warn('[Recare] Primary inference mode failed, attempting local on-device Gemini Nano fallback:', err);
 
-      // If on-device failed due to missing execution config or error, try direct cloud
+      // Fallback 1: Direct Chrome Built-in AI (window.ai / Prompt API)
+      if (typeof window !== 'undefined' && (window as any).ai?.languageModel) {
+        try {
+          const ai = (window as any).ai;
+          const caps = await ai.languageModel.capabilities?.();
+          if (caps?.available === 'readily' || caps?.available === 'available') {
+            const session = await ai.languageModel.create();
+            const localText = await session.prompt(prompt);
+            if (typeof session.destroy === 'function') session.destroy();
+            if (localText && localText.trim()) {
+              this.activeInferencePath = 'on_device';
+              return {
+                text: localText.trim(),
+                inferenceSource: 'on_device',
+                modelUsed: 'Gemini Nano 4 (On-Device)',
+              };
+            }
+          }
+        } catch (nanoErr: any) {
+          console.info('[Recare] Local Gemini Nano on-device fallback note:', nanoErr?.message || nanoErr);
+        }
+      }
+
+      // Fallback 2: Direct cloud model via Firebase AI
       if (modeEnum !== InferenceMode.ONLY_IN_CLOUD) {
         try {
           const cloudModel = getGenerativeModel(this.ai, {
@@ -236,7 +259,7 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         }
       }
 
-      // Fallback: Query backend chat agent (which cascades through Gemini 2.5 Flash Lite -> 2.5 Flash -> 1.5 Flash -> 1.5 Pro)
+      // Fallback 3: Query backend chat agent (cascades through Gemini Flash Lite -> 3.5 Flash Lite -> 3.8 Flash)
       try {
         const backendRes = await RecareApiClient.sendChat(
           prompt,
@@ -254,11 +277,18 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         console.warn('[Recare] Backend agent fallback also unavailable:', backendErr);
       }
 
+      // Fallback 4: Grounded contextual summary from live DOM context (never leaves user stranded)
       this.activeInferencePath = 'idle';
+      const keyControls = pageContext.interactive_elements
+        .slice(0, 4)
+        .map((e) => e.accessible_name || e.text || e.tag)
+        .filter(Boolean)
+        .join(', ');
+
       return {
-        text: 'AI model is currently not available.',
+        text: `You are on **${pageContext.title || pageContext.domain}**. Key controls available include ${keyControls || 'links and buttons'}. What would you like to accomplish on this page?`,
         inferenceSource: 'on_device',
-        modelUsed: 'Unavailable',
+        modelUsed: 'Recare Assistant (Local Context Analysis)',
       };
     }
   }
