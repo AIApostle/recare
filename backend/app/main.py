@@ -21,10 +21,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Middleware for Chrome Extension and local Web Dashboards
+# CORS Middleware for Chrome Extension, Vercel frontends, and local Web Dashboards
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"chrome-extension://.*|http://localhost:.*|http://127.0.0.1:.*",
+    allow_origin_regex=r"chrome-extension://.*|http://localhost:.*|http://127.0.0.1:.*|https://.*\.vercel\.app|https://.*\.onrender\.com|https://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
