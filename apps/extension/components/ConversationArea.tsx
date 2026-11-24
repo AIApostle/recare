@@ -12,6 +12,8 @@ export interface ChatMessageItem {
   plan?: PlanStep[];
   state?: TaskState;
   suggestedActions?: string[];
+  inferenceSource?: 'on_device' | 'in_cloud';
+  modelUsed?: string;
 }
 
 interface ConversationAreaProps {
@@ -65,9 +67,23 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
             }`}
           >
             <div className="flex items-center justify-between space-x-2 mb-1">
-              <span className="text-[10px] font-semibold opacity-75">
-                {msg.sender === 'user' ? 'You' : 'Recare'}
-              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] font-semibold opacity-75">
+                  {msg.sender === 'user' ? 'You' : 'Recare'}
+                </span>
+                {msg.inferenceSource && (
+                  <span
+                    className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                      msg.inferenceSource === 'on_device'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}
+                    title={msg.modelUsed || msg.inferenceSource}
+                  >
+                    {msg.inferenceSource === 'on_device' ? '⚡ On-device (Nano 4)' : '☁️ Cloud'}
+                  </span>
+                )}
+              </div>
               {msg.sender === 'assistant' && (
                 <button
                   type="button"

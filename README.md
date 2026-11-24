@@ -1,13 +1,21 @@
 # Recare — AI Browser Agent & Accessibility Assistant
+*(Built for Google #BuildHybridAI 2026 Hackathon)*
 
 > **Core Principle:** *Software should adapt to people, not require people to adapt to software.*
 
 Recare is an AI browser agent and accessibility assistant designed for Chrome and Chromium-based browsers. It helps users understand webpages, navigate unfamiliar software, and complete multi-step tasks using natural language, voice commands, and controlled browser execution.
 
+Recare is powered by a **Hybrid AI Architecture**: combining on-device **Gemini Nano 4** in Chrome for private, low-latency page understanding and cloud **Gemini** models via **Firebase AI Logic** (`firebase/ai`) and **Firebase App Check** for complex task planning and browser tool execution.
+
 ---
 
 ## Key Features
 
+- **Hybrid AI Logic (Google #BuildHybridAI)**:
+  - **On-Device Inference**: Uses Gemini Nano 4 via `InferenceMode.PREFER_ON_DEVICE` for private, single-turn page explanations, content simplification, and summarization without sending page DOM to the cloud.
+  - **Cloud Reasoning & Fallback**: Automatically routes multi-turn chat, complex workflow planning, and browser tool execution to cloud Gemini models.
+  - **Firebase App Check**: Secures AI Logic endpoints against unauthorized use.
+  - **Live Inference Indicators**: Visually signals whether a response ran `⚡ On-device (Nano 4)` or in the `☁️ Cloud`.
 - **Webpage Understanding**: Scans active DOM elements, accessible roles, ARIA names, and page structure while preserving privacy (passwords are automatically sanitized and never collected).
 - **Interactive Guidance**: Explains complex interfaces, translates technical terminology into plain language, and visually highlights controls on the page.
 - **Controlled Browser Execution**: Performs clicks, form filling, selections, navigation, and multi-step workflows through a strict, sandboxed execution engine.

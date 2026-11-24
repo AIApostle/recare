@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserPreferences } from '../types';
-import { X, Volume2, Type, Eye, Zap, HelpCircle } from 'lucide-react';
+import { X, Volume2, Type, Eye, Zap, HelpCircle, Cpu, Cloud, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { NanoDetector, NanoAvailability } from '../services/firebase-ai/nanoDetector';
 
 interface AccessibilitySettingsProps {
   preferences: UserPreferences;
@@ -13,6 +14,15 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
   onUpdate,
   onClose,
 }) => {
+  const [nanoStatus, setNanoStatus] = useState<NanoAvailability | null>(null);
+
+  useEffect(() => {
+    async function check() {
+      const res = await NanoDetector.checkAvailability();
+      setNanoStatus(res);
+    }
+    check();
+  }, []);
   return (
     <div
       role="dialog"
@@ -36,6 +46,65 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Hybrid AI & Gemini Nano 4 Section (Google #BuildHybridAI) */}
+        <div className="p-3.5 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Cpu className="w-4 h-4 text-emerald-700" />
+              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wide">
+                Hybrid AI Logic & Gemini Nano 4
+              </span>
+            </div>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-200 text-emerald-900 font-bold">
+              #BuildHybridAI
+            </span>
+          </div>
+
+          <div className="p-2.5 bg-white/80 rounded-lg border border-emerald-100 text-xs space-y-1.5">
+            <div className="flex items-center space-x-1.5 font-semibold text-gray-800">
+              {nanoStatus?.available ? (
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              )}
+              <span>Device Status: {nanoStatus?.status.toUpperCase() || 'CHECKING...'}</span>
+            </div>
+            <p className="text-[11px] text-gray-600 leading-normal">
+              {nanoStatus?.message || 'Detecting Chrome Built-in AI support...'}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-emerald-900 block">
+              Inference Mode Strategy:
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              {[
+                { id: 'PREFER_ON_DEVICE', label: 'Hybrid (Nano 1st)', desc: 'Tries Nano 4, falls back to Cloud' },
+                { id: 'ONLY_ON_DEVICE', label: 'On-Device Only', desc: 'Strict local privacy' },
+                { id: 'PREFER_IN_CLOUD', label: 'Cloud Preferred', desc: 'Fast cloud model' },
+                { id: 'ONLY_IN_CLOUD', label: 'Cloud Only', desc: 'Full cloud execution' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onUpdate({ inference_mode: opt.id as any })}
+                  className={`p-2 rounded-lg border text-left transition-all ${
+                    preferences.inference_mode === opt.id
+                      ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm font-semibold'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-emerald-50'
+                  }`}
+                >
+                  <div className="font-bold text-[11px]">{opt.label}</div>
+                  <div className={`text-[10px] ${preferences.inference_mode === opt.id ? 'text-emerald-100' : 'text-gray-500'}`}>
+                    {opt.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Text Size */}

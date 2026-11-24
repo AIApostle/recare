@@ -21,12 +21,15 @@ import { AccessibilitySettings } from '../../components/AccessibilitySettings';
 import { OnboardingModal } from '../../components/OnboardingModal';
 import { TaskHistory } from '../../components/TaskHistory';
 
+import { FirebaseAiService, CurrentInferencePath } from '../../services/firebase-ai/firebaseAiService';
+
 export default function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isBackendConnected, setIsBackendConnected] = useState(true);
+  const [inferencePath, setInferencePath] = useState<CurrentInferencePath>('idle');
 
   // Active page state
   const [pageContext, setPageContext] = useState<PageContext | null>(null);
@@ -45,6 +48,11 @@ export default function App() {
     async function init() {
       const prefs = await StorageService.getPreferences();
       setPreferences(prefs);
+
+      // Initialize Firebase AI Logic service
+      FirebaseAiService.initialize().catch((err) => {
+        console.warn('Firebase AI Logic init error:', err);
+      });
 
       const onboardingDone = await StorageService.isOnboardingCompleted();
       if (!onboardingDone) {
@@ -116,7 +124,9 @@ export default function App() {
     text: string,
     spokenText?: string,
     plan?: any,
-    suggestedActions?: string[]
+    suggestedActions?: string[],
+    inferenceSource?: 'on_device' | 'in_cloud',
+    modelUsed?: string
   ) => {
     setMessages((prev) => [
       ...prev,
@@ -128,6 +138,8 @@ export default function App() {
         timestamp: new Date().toLocaleTimeString(),
         plan,
         suggestedActions,
+        inferenceSource,
+        modelUsed,
       },
     ]);
 
@@ -141,37 +153,89 @@ export default function App() {
     addUserMessage(userInput);
     await refreshPageContext();
 
-    // GUIDE mode or question: route to Chat endpoint
-    if (preferences.interaction_mode === 'guide' || userInput.endsWith('?') || userInput.toLowerCase().startsWith('what') || userInput.toLowerCase().startsWith('explain')) {
+    const currentCtx = pageContext || {
+      url: window.location.href,
+      domain: window.location.hostname,
+      title: document.title || 'Webpage',
+      headings: [],
+      interactive_elements: [],
+    };
+
+    const isQuestionOrExplanation =
+      preferences.interaction_mode === 'guide' ||
+      userInput.endsWith('?') ||
+      userInput.toLowerCase().startsWith('what') ||
+      userInput.toLowerCase().startsWith('explain') ||
+      userInput.toLowerCase().startsWith('summar') ||
+      userInput.toLowerCase().startsWith('simplif');
+
+    // 1. On-Device / Hybrid Explanation with Firebase AI Logic (Gemini Nano 4)
+    if (isQuestionOrExplanation) {
+      setInferencePath('on_device');
       try {
-        const chatRes = await RecareApiClient.sendChat(
-          userInput,
-          pageContext || undefined,
-          preferences.interaction_mode,
-          preferences.simplified_language
+        const aiRes = await FirebaseAiService.explainPageLocally(
+          currentCtx,
+          preferences.simplified_language,
+          preferences.inference_mode
         );
 
-        // Highlight requested element if returned
-        if (chatRes.highlight_targets && chatRes.highlight_targets.length > 0) {
-          const target = chatRes.highlight_targets[0];
-          await MessagingService.highlightElement(target.element_id, target.selector, target.label);
+        setInferencePath(aiRes.inferenceSource);
+
+        // Highlight candidate elements if mentioned in query
+        const words = userInput.toLowerCase().split(/\s+/);
+        const match = currentCtx.interactive_elements.find((el) => {
+          const name = (el.accessible_name || el.text || '').toLowerCase();
+          return words.some((w) => w.length > 3 && name.includes(w));
+        });
+        if (match) {
+          await MessagingService.highlightElement(match.element_id, match.selector, match.accessible_name);
         }
 
         addAssistantMessage(
-          chatRes.reply,
-          chatRes.spoken_summary,
+          aiRes.text,
+          aiRes.text,
           undefined,
-          chatRes.suggested_actions
+          ['Highlight key buttons', 'Help me fill this form', 'Explain next step'],
+          aiRes.inferenceSource,
+          aiRes.modelUsed
         );
       } catch (err: any) {
+        setInferencePath('idle');
         addAssistantMessage(`Sorry, I encountered an issue: ${err.message}`);
       }
       return;
     }
 
-    // ASSIST or AUTONOMOUS mode: Start task execution state machine
+    // 2. Cloud-Powered Task Planning & Function Calling with Firebase AI Logic & Backend
     try {
+      setInferencePath('in_cloud');
       setTaskState('PLANNING');
+
+      // Check if Cloud Function Calling generates tool calls
+      const cloudAI = await FirebaseAiService.runCloudAssistantWithTools(
+        userInput,
+        currentCtx
+      );
+
+      if (cloudAI.toolCalls && cloudAI.toolCalls.length > 0) {
+        // Execute first tool call
+        const tool = cloudAI.toolCalls[0];
+        if (tool.name === 'highlight_element') {
+          await MessagingService.highlightElement(tool.args.element_id, undefined, tool.args.label);
+          addAssistantMessage(
+            cloudAI.text,
+            cloudAI.text,
+            undefined,
+            ['Click it for me', 'Continue task'],
+            'in_cloud',
+            cloudAI.modelUsed
+          );
+          setTaskState('COMPLETED');
+          return;
+        }
+      }
+
+      // Hand off to Task State Machine for multi-step execution & safety policies
       const taskRes = await RecareApiClient.createTask(
         userInput,
         preferences.interaction_mode,
@@ -182,7 +246,14 @@ export default function App() {
       setTaskState(taskRes.state);
 
       if (taskRes.message) {
-        addAssistantMessage(taskRes.message, taskRes.message, taskRes.plan);
+        addAssistantMessage(
+          taskRes.message,
+          taskRes.message,
+          taskRes.plan,
+          undefined,
+          'in_cloud',
+          'Firebase AI Cloud & Strands'
+        );
       }
 
       // Check if approval is required before action
@@ -198,6 +269,7 @@ export default function App() {
       }
     } catch (err: any) {
       setTaskState('FAILED');
+      setInferencePath('idle');
       addAssistantMessage(`Could not start task: ${err.message}`);
     }
   };
@@ -330,6 +402,7 @@ export default function App() {
       <Header
         currentDomain={pageContext?.domain}
         isBackendConnected={isBackendConnected}
+        inferencePath={inferencePath}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHistory={() => setShowHistory(true)}
       />

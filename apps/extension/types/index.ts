@@ -126,6 +126,7 @@ export interface TaskResponse {
 
 export interface UserPreferences {
   interaction_mode: InteractionMode;
+  inference_mode: 'PREFER_ON_DEVICE' | 'ONLY_ON_DEVICE' | 'PREFER_IN_CLOUD' | 'ONLY_IN_CLOUD';
   speech_rate: number;
   text_size: 'small' | 'medium' | 'large' | 'xlarge';
   voice_enabled: boolean;

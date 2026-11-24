@@ -8,6 +8,7 @@
     "dev:extension": "pnpm --filter @recare/extension dev",
     "build": "pnpm --filter @recare/extension build",
     "build:extension": "pnpm --filter @recare/extension build",
+    "zip": "pnpm --filter @recare/extension zip",
     "test": "pnpm --filter @recare/extension test && (cd backend && uv run pytest)",
     "test:backend": "cd backend && uv run pytest",
     "test:extension": "pnpm --filter @recare/extension test",

@@ -14,8 +14,14 @@ build/
 
 # Environment
 .env
-.env.local
+.env.*
+!.env.example
 *.local
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs
 *.log
