@@ -129,10 +129,10 @@ class GeminiFallbackModel(Model):
                     except Exception as e:
                         logger.warning(f"[Recare] Error connecting to {candidate}: {e}. Attempting fallback...")
 
-        # If all Gemini models fail or no API key is provided, use graceful grounded fallback
+        # If all Gemini models fail or no API key is provided
         if not text_result:
-            model_used = "Recare Grounded Fallback"
-            text_result = f"Recare Assistant: Analyzed request '{last_msg}' on the active webpage."
+            model_used = "Unavailable"
+            text_result = "AI model is currently not available."
 
         yield MessageStartEvent(role="assistant")
         yield ContentBlockStartEvent(index=0)

@@ -47,7 +47,7 @@ class RecareAgentOrchestrator:
         mode: str = "guide",
         simplified: bool = False,
     ) -> ChatResponse:
-        """Process an interactive chat or page question."""
+        """Process an interactive chat or page question with live AI inference."""
         ctx = page_context or {}
         set_page_context_store(ctx)
         
@@ -56,80 +56,45 @@ class RecareAgentOrchestrator:
         headings = ctx.get("headings", [])
         elements = ctx.get("interactive_elements", [])
         
-        # Check for prompt injection in page context
-        clean_summary = PromptInjectionDefense.sanitize_webpage_content(
-            ctx.get("main_content_summary", "")
+        from app.agent.models import get_model
+        model = get_model(settings.MODEL_PROVIDER, settings.MODEL_NAME)
+        reply = None
+
+        h_str = ", ".join([h.get("text", "") for h in headings[:5]]) if headings else "General page content"
+        el_str = ", ".join([(e.get("accessible_name") or e.get("text") or e.get("tag")) for e in elements[:12]])
+
+        system_instruction = (
+            f"You are Recare, an accessibility AI browser assistant. "
+            f"The user is viewing the page '{title}' on domain '{domain}'. "
+            f"Headings: {h_str}. "
+            f"Interactive elements: {el_str}. "
+            f"Answer the user's question directly, clearly, and concisely."
+            + (" Use very simple, plain language." if simplified else "")
         )
 
-        msg_lower = message.lower()
-        highlight_targets: List[HighlightTarget] = []
-        suggested_actions: List[str] = []
-        suggested_task: Optional[str] = None
-        
-        # Match elements for visual assistance / questions
-        if "what am i looking at" in msg_lower or "explain" in msg_lower or "what is this" in msg_lower:
-            h_text = ", ".join([h.get("text") for h in headings[:3]]) if headings else "main content"
-            elem_types = list(set([e.get("tag") for e in elements[:10]]))
-            
-            if simplified:
-                reply = (
-                    f"You are looking at '{title}' on {domain}. "
-                    f"It has sections about {h_text}. "
-                    f"There are buttons and options you can use."
-                )
-                spoken = f"You are on {title}. Tell me if you want me to read or click anything."
-            else:
-                reply = (
-                    f"You are on **{title}** ({domain}).\n\n"
-                    f"**Structure**: Main headings include: {h_text}.\n"
-                    f"**Interactive controls**: Discovered {len(elements)} interactive elements "
-                    f"including {', '.join(elem_types) if elem_types else 'buttons and links'}.\n\n"
-                    f"Let me know what you'd like to do, or ask me to highlight any specific control."
-                )
-                spoken = f"You are on {title}. Found {len(elements)} controls. How can I help?"
-                
-            suggested_actions = ["Highlight key buttons", "Help me fill this form", "Explain the steps"]
-            
-        elif "highlight" in msg_lower or "where is" in msg_lower or "find" in msg_lower or "button" in msg_lower:
-            # Find candidate elements
-            matching_elems = [
-                e for e in elements 
-                if any(k in (e.get("accessible_name") or e.get("text") or "").lower() for k in msg_lower.split())
-            ]
-            target = matching_elems[0] if matching_elems else (elements[0] if elements else None)
-            
-            if target:
-                name = target.get("accessible_name") or target.get("text") or "Control"
-                highlight_targets.append(HighlightTarget(
-                    element_id=target.get("element_id"),
-                    selector=target.get("selector"),
-                    accessible_name=name,
-                    label=name,
-                ))
-                reply = f"I've highlighted the **{name}** ({target.get('role', target.get('tag'))}) on the page for you."
-                spoken = f"Highlighted {name}."
-            else:
-                reply = f"I could not locate an element matching your request on this page."
-                spoken = "I could not locate that element."
-                
-            suggested_actions = ["Click it for me", "Explain what it does", "Show other controls"]
-            
-        else:
-            # General assistance
-            reply = (
-                f"I'm here to help you with **{title}**. "
-                f"You can ask me to explain any control, highlight buttons, or carry out a task like filling forms or downloading files."
+        try:
+            from strands.types.content import Message
+            events = model.stream(
+                messages=[Message(role="user", content=message)],
+                system_prompt=system_instruction,
             )
-            spoken = f"Ready to help on {title}."
-            suggested_task = message if len(message.split()) > 2 else None
-            suggested_actions = ["What am I looking at?", "Guide me through this page", "Help me with a task"]
+            chunks = []
+            async for ev in events:
+                if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
+                    chunks.append(ev.delta.text)
+            if chunks:
+                reply = "".join(chunks).strip()
+        except Exception as e:
+            logger.warning(f"Error querying model for chat: {e}")
+
+        if not reply:
+            reply = "AI model is currently not available."
 
         return ChatResponse(
             reply=reply,
-            spoken_summary=spoken,
-            highlight_targets=highlight_targets,
-            suggested_actions=suggested_actions,
-            suggested_task=suggested_task,
+            spoken_summary=reply,
+            highlight_targets=[],
+            suggested_actions=["Explain this page", "Help me fill this form", "Where is the submit button?"],
         )
 
     async def step_task(
@@ -236,18 +201,35 @@ class RecareAgentOrchestrator:
         STOP_WORDS = {"help", "this", "page", "that", "with", "from", "some", "want", "need", "like", "please", "could", "would", "should", "tell", "about", "your", "what", "where", "when", "there", "here", "just"}
 
         if not has_action_intent and not any(k in req_lower for k in ["fill", "enter", "type", "click"]):
+            from app.agent.models import get_model
+            model = get_model(settings.MODEL_PROVIDER, settings.MODEL_NAME)
+            conv_reply = None
+            try:
+                from strands.types.content import Message
+                events = model.stream(
+                    messages=[Message(role="user", content=user_request)],
+                    system_prompt=f"You are Recare, an AI browser assistant on page '{ctx.get('title', 'Webpage')}'. Respond helpfully and concisely to the user's conversational request in 1-2 natural sentences."
+                )
+                chunks = []
+                async for ev in events:
+                    if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
+                        chunks.append(ev.delta.text)
+                if chunks:
+                    conv_reply = "".join(chunks).strip()
+            except Exception as e:
+                logger.warning(f"Error querying model: {e}")
+
+            if not conv_reply or "Analyzed request" in conv_reply:
+                conv_reply = "AI model is currently not available."
+
             return TaskResponse(
                 task_id=task_id,
                 state=TaskState.COMPLETED,
                 mode=mode,
                 user_request=user_request,
                 plan=plan,
-                message=(
-                    f"I'm here to help you on **{ctx.get('title', 'this page')}**! "
-                    f"I can guide you through the interface, highlight controls, fill out forms, or click buttons for you. "
-                    f"What specific task would you like to accomplish?"
-                ),
-                completion_summary="Conversational guidance provided.",
+                message=conv_reply,
+                completion_summary="Conversational response provided.",
             )
 
         if "fill" in req_lower or "enter" in req_lower or "type" in req_lower:

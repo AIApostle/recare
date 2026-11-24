@@ -42,6 +42,8 @@ export default function App() {
 
   // Chat conversation history
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
+  const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
+  const listenTriggerRef = useRef<(() => void) | null>(null);
 
   // Load preferences and check health on mount
   useEffect(() => {
@@ -148,7 +150,13 @@ export default function App() {
     const mode = preferences.response_output_mode || 'both';
     const shouldSpeak = (mode === 'both' || mode === 'voice' || preferences.voice_enabled) && mode !== 'text';
     if (shouldSpeak && (spokenText || text)) {
-      VoiceService.speak(spokenText || text, preferences.speech_rate);
+      VoiceService.speak(spokenText || text, preferences.speech_rate, () => {
+        if (isLiveVoiceActive && listenTriggerRef.current) {
+          setTimeout(() => {
+            listenTriggerRef.current?.();
+          }, 350);
+        }
+      });
     }
   };
 
@@ -523,6 +531,11 @@ export default function App() {
       <Composer
         onSendMessage={handleUserMessage}
         disabled={isExecutingAction || taskState === 'WAITING_FOR_USER_APPROVAL'}
+        isLiveVoice={isLiveVoiceActive}
+        onToggleLiveVoice={setIsLiveVoiceActive}
+        onRegisterListenTrigger={(triggerFn) => {
+          listenTriggerRef.current = triggerFn;
+        }}
       />
 
       {showSettings && (

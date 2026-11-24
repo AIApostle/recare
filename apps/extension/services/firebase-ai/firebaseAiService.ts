@@ -226,11 +226,10 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         };
       } catch (localErr: any) {
         this.activeInferencePath = 'idle';
-        // Fallback 2: Grounded graceful response if completely offline
         return {
-          text: `You are on **${title}** (${domain}). Key sections include ${headings || 'general content'}. You have ${pageContext.interactive_elements.length} interactive elements available.`,
+          text: 'AI model is currently not available.',
           inferenceSource: 'on_device',
-          modelUsed: 'Grounded DOM Heuristic (Offline)',
+          modelUsed: 'Unavailable',
         };
       }
     }

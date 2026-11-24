@@ -27,6 +27,12 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
   onSuggestedAction,
   speechRate = 1.0,
 }) => {
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   return (
     <div
       role="log"
@@ -167,6 +173,8 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
           </div>
         </div>
       ))}
+      {/* Auto-scroll target */}
+      <div ref={bottomRef} />
     </div>
   );
 };

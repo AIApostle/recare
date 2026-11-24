@@ -16,6 +16,21 @@ export class VoiceService {
     return new SpeechRecognition();
   }
 
+  /** Request microphone permissions if not yet granted */
+  static async requestMicrophonePermission(): Promise<boolean> {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+        return true;
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('[VoiceService] Microphone access error:', err);
+      return false;
+    }
+  }
+
   /** Start listening for voice commands */
   static startListening(
     onTranscript: (text: string, isFinal: boolean) => void,
@@ -55,7 +70,14 @@ export class VoiceService {
 
     rec.onerror = (event: any) => {
       this.isListening = false;
-      onError(event.error || 'Speech recognition error');
+      const err = event.error;
+      if (err === 'not-allowed') {
+        onError('Microphone access blocked. Click the lock/tune icon in the URL bar to allow microphone.');
+      } else if (err === 'no-speech') {
+        onEnd();
+      } else {
+        onError(err || 'Speech recognition error');
+      }
     };
 
     rec.onend = () => {
