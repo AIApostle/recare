@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NanoDetector } from '../services/firebase-ai/nanoDetector';
 import { FirebaseAiService, RECARE_BROWSER_TOOLS } from '../services/firebase-ai/firebaseAiService';
 import { getFirebaseConfig } from '../services/firebase-ai/firebaseConfig';
+import { RecareApiClient } from '../services/api';
 import { PageContext } from '../types';
 
 describe('Firebase AI Logic Configuration & Nano 4 Detection', () => {
@@ -65,6 +66,12 @@ describe('Firebase AI Logic Tool Declarations & Fallbacks', () => {
   });
 
   it('provides grounded fallback explanation when running offline or without credentials', async () => {
+    vi.spyOn(RecareApiClient, 'sendChat').mockResolvedValue({
+      reply: 'Grounded fallback explanation for Billing Portal',
+      highlight_targets: [],
+      suggested_actions: ['Explain this page'],
+    });
+
     const mockContext: PageContext = {
       url: 'https://example.com/billing',
       domain: 'example.com',

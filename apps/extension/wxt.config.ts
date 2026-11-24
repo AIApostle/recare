@@ -13,7 +13,6 @@ export default defineConfig({
       'activeTab',
       'scripting',
       'tabs',
-      'audioCapture',
     ],
     action: {
       default_title: 'Open Recare Assistant',
