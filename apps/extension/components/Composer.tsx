@@ -79,8 +79,8 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, disabled }) =
         </div>
       )}
 
-      {/* Double-bezel input pill */}
-      <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-1.5 flex items-center gap-1.5 focus-within:border-emerald-500/60 focus-within:bg-white focus-within:ring-3 focus-within:ring-emerald-500/10 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+      {/* Input container pill */}
+      <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-1.5 flex items-center gap-1.5 focus-within:border-zinc-300 focus-within:bg-white transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
         {/* Voice Trigger */}
         <button
           type="button"
@@ -96,7 +96,7 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, disabled }) =
           {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
         </button>
 
-        {/* Input Field */}
+        {/* Input Field (Invisible inner box, transparent background) */}
         <input
           type="text"
           value={input}
@@ -104,7 +104,8 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, disabled }) =
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder="Ask a question or request an action..."
-          className="flex-1 bg-transparent text-xs sm:text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none px-1"
+          className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-xs sm:text-sm text-zinc-900 placeholder:text-zinc-400 px-1 shadow-none"
+          style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
           aria-label="Message Recare assistant"
         />
 

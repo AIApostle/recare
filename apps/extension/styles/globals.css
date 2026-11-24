@@ -15,13 +15,23 @@ body {
 
 /* Accessibility Focus Styles (WCAG 2.2 AA compliant) */
 button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
 select:focus-visible,
 a:focus-visible {
   outline: 2px solid #16a34a;
   outline-offset: 2px;
   box-shadow: var(--recare-focus-ring);
+}
+
+/* Remove rectangular focus boxes from text inputs so custom styled containers remain seamless */
+input,
+input:focus,
+input:focus-visible,
+textarea,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent;
 }
 
 /* Reduced Motion preference support */
