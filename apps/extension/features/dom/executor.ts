@@ -57,8 +57,19 @@ export class DomExecutor {
           if (typeof el.focus === 'function') {
             el.focus();
           }
-          // Dispatch standard pointer and click events
+
+          // Dispatch pointer and touch/mouse events for robust screen tapping
+          try {
+            if (typeof PointerEvent !== 'undefined') {
+              el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+            }
+          } catch {}
           el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          try {
+            if (typeof PointerEvent !== 'undefined') {
+              el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true }));
+            }
+          } catch {}
           el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
           el.click();
 

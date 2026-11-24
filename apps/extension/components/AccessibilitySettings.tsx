@@ -115,6 +115,38 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
           </div>
         </div>
 
+        {/* Response Output Mode (Audio / Text / Both) */}
+        <div className="space-y-2.5">
+          <label className="flex items-center space-x-2 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>Response Output Mode</span>
+          </label>
+          <div className="grid grid-cols-3 gap-1.5 bg-zinc-100/80 p-1 rounded-2xl border border-zinc-200/50">
+            {[
+              { id: 'both', label: 'Voice & Text', desc: 'Audio + visual response' },
+              { id: 'text', label: 'Text Only', desc: 'Silent visual response' },
+              { id: 'voice', label: 'Voice Only', desc: 'Audio priority' },
+            ].map((mode) => {
+              const isSelected = (preferences.response_output_mode || 'both') === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => onUpdate({ response_output_mode: mode.id as any })}
+                  className={`py-2 px-1 text-center text-xs font-medium rounded-xl transition-all ${
+                    isSelected
+                      ? 'bg-white text-zinc-950 shadow-sm font-semibold'
+                      : 'text-zinc-600 hover:text-zinc-950'
+                  }`}
+                  title={mode.desc}
+                >
+                  {mode.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Experience Toggles */}
         <div className="space-y-2 pt-1">
           <label className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider block">

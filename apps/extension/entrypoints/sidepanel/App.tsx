@@ -83,15 +83,17 @@ export default function App() {
     };
   }, []);
 
-  const refreshPageContext = async () => {
+  const refreshPageContext = async (): Promise<PageContext | null> => {
     try {
       const ctx = await MessagingService.getPageContext();
       if (ctx) {
         setPageContext(ctx);
+        return ctx;
       }
     } catch (e) {
       console.warn('Could not fetch active page context:', e);
     }
+    return null;
   };
 
   const handlePreferencesUpdate = async (updates: Partial<UserPreferences>) => {

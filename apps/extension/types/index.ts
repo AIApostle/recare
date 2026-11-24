@@ -130,6 +130,7 @@ export interface UserPreferences {
   speech_rate: number;
   text_size: 'small' | 'medium' | 'large' | 'xlarge';
   voice_enabled: boolean;
+  response_output_mode: 'both' | 'text' | 'voice';
   voice_gender: string;
   simplified_language: boolean;
   reduced_motion: boolean;

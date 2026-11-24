@@ -5,10 +5,11 @@ const ONBOARDING_COMPLETED_KEY = 'recare_onboarding_completed';
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   interaction_mode: 'assist',
-  inference_mode: 'PREFER_ON_DEVICE',
+  inference_mode: 'PREFER_IN_CLOUD',
   speech_rate: 1.0,
   text_size: 'medium',
-  voice_enabled: false,
+  voice_enabled: true,
+  response_output_mode: 'both',
   voice_gender: 'neutral',
   simplified_language: false,
   reduced_motion: false,
