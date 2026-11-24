@@ -229,6 +229,27 @@ class RecareAgentOrchestrator:
         action_type = ActionType.CLICK
         val = None
 
+        # Check if the request is an action intent vs conversational guidance
+        action_keywords = {"click", "press", "tap", "fill", "type", "enter", "submit", "navigate", "go", "open", "scroll", "select", "choose"}
+        has_action_intent = any(k in req_lower.split() for k in action_keywords) or any(k in req_lower for k in ["click on", "fill in", "type in", "press the", "scroll down", "scroll up"])
+
+        STOP_WORDS = {"help", "this", "page", "that", "with", "from", "some", "want", "need", "like", "please", "could", "would", "should", "tell", "about", "your", "what", "where", "when", "there", "here", "just"}
+
+        if not has_action_intent and not any(k in req_lower for k in ["fill", "enter", "type", "click"]):
+            return TaskResponse(
+                task_id=task_id,
+                state=TaskState.COMPLETED,
+                mode=mode,
+                user_request=user_request,
+                plan=plan,
+                message=(
+                    f"I'm here to help you on **{ctx.get('title', 'this page')}**! "
+                    f"I can guide you through the interface, highlight controls, fill out forms, or click buttons for you. "
+                    f"What specific task would you like to accomplish?"
+                ),
+                completion_summary="Conversational guidance provided.",
+            )
+
         if "fill" in req_lower or "enter" in req_lower or "type" in req_lower:
             inputs = [e for e in elements if e.get("tag") in ["input", "textarea"] and e.get("input_type") != "password"]
             if inputs:
@@ -236,14 +257,14 @@ class RecareAgentOrchestrator:
                 action_type = ActionType.FILL
                 val = "Sample Value"
         else:
-            # Look for button or link matching intent
-            for el in elements:
-                name = (el.get("accessible_name") or el.get("text") or "").lower()
-                if any(w in name for w in req_lower.split() if len(w) > 3):
-                    candidate_el = el
-                    break
-            if not candidate_el and elements:
-                candidate_el = elements[0]
+            # Look for button or link matching intent, ignoring generic stop words
+            meaningful_words = [w for w in req_lower.split() if len(w) > 3 and w not in STOP_WORDS]
+            if meaningful_words:
+                for el in elements:
+                    name = (el.get("accessible_name") or el.get("text") or "").lower()
+                    if any(w in name for w in meaningful_words):
+                        candidate_el = el
+                        break
 
         if not candidate_el:
             return TaskResponse(
@@ -252,8 +273,8 @@ class RecareAgentOrchestrator:
                 mode=mode,
                 user_request=user_request,
                 plan=plan,
-                message="Understood webpage, but no further interactive controls required for this goal.",
-                completion_summary="Analysis completed.",
+                message=f"I understood you want to '{user_request}', but I couldn't locate a matching interactive control on this page. Would you like me to highlight the available options?",
+                completion_summary="No matching target element found.",
             )
 
         # Create proposed browser action

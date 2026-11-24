@@ -165,13 +165,24 @@ export default function App() {
       interactive_elements: [],
     };
 
+    const trimmedInput = userInput.trim().toLowerCase();
     const isQuestionOrExplanation =
       preferences.interaction_mode === 'guide' ||
-      userInput.endsWith('?') ||
-      userInput.toLowerCase().startsWith('what') ||
-      userInput.toLowerCase().startsWith('explain') ||
-      userInput.toLowerCase().startsWith('summar') ||
-      userInput.toLowerCase().startsWith('simplif');
+      trimmedInput.endsWith('?') ||
+      trimmedInput.startsWith('what') ||
+      trimmedInput.startsWith('explain') ||
+      trimmedInput.startsWith('summar') ||
+      trimmedInput.startsWith('simplif') ||
+      trimmedInput.startsWith('how') ||
+      trimmedInput.startsWith('can') ||
+      trimmedInput.startsWith('could') ||
+      trimmedInput.startsWith('help') ||
+      trimmedInput.startsWith('hi') ||
+      trimmedInput.startsWith('hello') ||
+      trimmedInput.startsWith('tell') ||
+      trimmedInput.includes('help me') ||
+      trimmedInput.includes('can you') ||
+      trimmedInput === 'help';
 
     // 1. On-Device / Hybrid Explanation with Firebase AI Logic (Gemini Nano 4)
     if (isQuestionOrExplanation) {
