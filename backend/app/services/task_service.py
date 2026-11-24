@@ -1,5 +1,6 @@
+from __future__ import annotations
 import uuid
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.task import TaskModel, ActionStepModel, ApprovalRecordModel
