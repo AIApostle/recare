@@ -31,4 +31,7 @@ class PageContext(BaseModel):
     main_content_summary: Optional[str] = Field(
         None, description="Summarized visible body text (scripts/styles stripped)"
     )
+    screenshot_base64: Optional[str] = Field(
+        None, description="Base64 encoded JPEG screenshot of the visible tab for visual understanding"
+    )
     timestamp: Optional[str] = Field(None, description="ISO timestamp of context capture")

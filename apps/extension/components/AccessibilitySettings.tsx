@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserPreferences } from '../types';
-import { X, Volume2, Type, Eye, Sparkles, Contrast, Activity, Check, Cpu, ShieldCheck } from 'lucide-react';
+import { X, Volume2, Type, Eye, Sparkles, Contrast, Activity, ShieldCheck } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 interface AccessibilitySettingsProps {
@@ -36,15 +36,6 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
       preferences.voice_gender !== 'neutral' ? preferences.voice_gender : undefined
     );
   };
-
-  const speechRatePresets = [
-    { label: '0.75x (Slow)', value: 0.75 },
-    { label: '1.0x (Normal)', value: 1.0 },
-    { label: '1.25x (Fast)', value: 1.25 },
-    { label: '1.5x (Brisk)', value: 1.5 },
-    { label: '1.75x (Rapid)', value: 1.75 },
-    { label: '2.0x (Max)', value: 2.0 },
-  ];
 
   return (
     <div
@@ -105,8 +96,8 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
           </div>
         </div>
 
-        {/* Speech Rate Slider & Presets */}
-        <div className="space-y-2.5">
+        {/* Speech Rate Slider (Smooth Scrolling Bar Only) */}
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label
               htmlFor="speech-rate-slider"
@@ -144,29 +135,10 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
             className="w-full accent-emerald-600 h-2 bg-zinc-200 rounded-lg cursor-pointer"
             aria-label="Adjust voice speech rate"
           />
-
-          {/* Quick-Select Speed Presets */}
-          <div className="grid grid-cols-3 gap-1">
-            {speechRatePresets.map((preset) => {
-              const isActive = Math.abs(preferences.speech_rate - preset.value) < 0.02;
-              return (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() => {
-                    onUpdate({ speech_rate: preset.value });
-                    handleTestSpeech(preset.value);
-                  }}
-                  className={`text-[10px] font-medium py-1 px-1.5 rounded-md border transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-emerald-600 text-white border-emerald-600 font-semibold shadow-xs'
-                      : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
+          <div className="flex justify-between text-[10px] text-zinc-400 font-medium px-1">
+            <span>Slower (0.5x)</span>
+            <span>Normal (1.0x)</span>
+            <span>Faster (2.0x)</span>
           </div>
         </div>
 
@@ -223,36 +195,6 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
                       : 'text-zinc-600 hover:text-zinc-950'
                   }`}
                   title={mode.desc}
-                >
-                  {mode.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* AI Inference Mode */}
-        <div className="space-y-2">
-          <label className="flex items-center space-x-1.5 text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
-            <Cpu className="w-3.5 h-3.5 text-zinc-700" />
-            <span>AI Reasoning Engine</span>
-          </label>
-          <div className="grid grid-cols-2 gap-1.5 bg-zinc-100 p-1 rounded-xl border border-zinc-200/60">
-            {[
-              { id: 'PREFER_IN_CLOUD', label: 'Hybrid Cloud (Fast)' },
-              { id: 'ONLY_IN_CLOUD', label: 'Cloud Only (Direct)' },
-            ].map((mode) => {
-              const isSelected = (preferences.inference_mode || 'PREFER_IN_CLOUD') === mode.id;
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => onUpdate({ inference_mode: mode.id as any })}
-                  className={`py-1.5 px-2 text-center text-xs font-medium rounded-lg transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-white text-zinc-950 shadow-sm font-semibold'
-                      : 'text-zinc-600 hover:text-zinc-950'
-                  }`}
                 >
                   {mode.label}
                 </button>

@@ -89,6 +89,11 @@ export default function App() {
     try {
       const ctx = await MessagingService.getPageContext();
       if (ctx) {
+        // Capture visible page screenshot for multimodal visual understanding
+        const screenshot = await MessagingService.capturePageScreenshot();
+        if (screenshot) {
+          ctx.screenshot_base64 = screenshot;
+        }
         setPageContext(ctx);
         return ctx;
       }

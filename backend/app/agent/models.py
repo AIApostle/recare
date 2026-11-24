@@ -17,10 +17,11 @@ from app.core.config import settings
 from app.core.logging import logger
 
 GEMINI_FALLBACK_MODELS = [
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
+    "gemini-flash-lite-latest",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.8-flash",
+    "gemini-pro-latest",
 ]
 
 def _extract_content(msg: Any) -> str:
@@ -73,7 +74,7 @@ class GeminiFallbackModel(Model):
     gemini-2.5-flash-lite -> gemini-2.5-flash -> gemini-1.5-flash -> gemini-1.5-pro -> mock
     """
 
-    def __init__(self, model_id: str = "gemini-2.5-flash-lite"):
+    def __init__(self, model_id: str = "gemini-flash-lite-latest"):
         self.model_id = model_id
         super().__init__()
 
@@ -96,6 +97,7 @@ class GeminiFallbackModel(Model):
     ) -> AsyncIterable[StreamEvent]:
         api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
         last_msg = _extract_content(messages[-1]) if messages else "Hello"
+        image_base64 = kwargs.get("image_base64")
 
         # Build candidate chain starting with primary requested model
         candidates = [self.model_id] + [m for m in GEMINI_FALLBACK_MODELS if m != self.model_id]
@@ -107,8 +109,20 @@ class GeminiFallbackModel(Model):
             async with httpx.AsyncClient(timeout=25.0) as client:
                 for candidate in candidates:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={api_key}"
+                    parts: List[Dict[str, Any]] = [{"text": str(last_msg)}]
+
+                    # Attach multimodal visual screenshot if present
+                    if image_base64:
+                        raw_b64 = image_base64.split(",")[-1]
+                        parts.append({
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": raw_b64,
+                            }
+                        })
+
                     payload: Dict[str, Any] = {
-                        "contents": [{"parts": [{"text": str(last_msg)}]}],
+                        "contents": [{"parts": parts}],
                         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
                     }
                     if system_prompt:

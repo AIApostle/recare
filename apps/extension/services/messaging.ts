@@ -50,6 +50,22 @@ export class MessagingService {
     return null;
   }
 
+  /** Capture screenshot of visible tab for visual multimodal understanding */
+  static async capturePageScreenshot(): Promise<string | null> {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.captureVisibleTab) {
+        const screenshot = await chrome.tabs.captureVisibleTab(undefined as any, {
+          format: 'jpeg',
+          quality: 60,
+        });
+        return screenshot;
+      }
+    } catch (err: any) {
+      console.info('[Recare] Visual screenshot capture omitted or unavailable:', err?.message || err);
+    }
+    return null;
+  }
+
   /** Request execution of a browser action */
   static async executeBrowserAction(action: BrowserAction): Promise<ActionResult> {
     const response = await this.sendToActiveTab({ type: 'EXECUTE_ACTION', action });

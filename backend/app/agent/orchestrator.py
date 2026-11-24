@@ -72,16 +72,28 @@ class RecareAgentOrchestrator:
             + (" Use very simple, plain language." if simplified else "")
         )
 
+        screenshot_b64 = ctx.get("screenshot_base64")
         try:
             from strands.types.content import Message
             events = model.stream(
                 messages=[Message(role="user", content=message)],
                 system_prompt=system_instruction,
+                image_base64=screenshot_b64,
             )
             chunks = []
             async for ev in events:
-                if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
-                    chunks.append(ev.delta.text)
+                if isinstance(ev, dict):
+                    delta = ev.get("delta")
+                    if isinstance(delta, dict) and "text" in delta:
+                        chunks.append(delta["text"])
+                    elif isinstance(delta, str):
+                        chunks.append(delta)
+                elif hasattr(ev, "delta"):
+                    delta = getattr(ev, "delta")
+                    if hasattr(delta, "text"):
+                        chunks.append(delta.text)
+                    elif isinstance(delta, str):
+                        chunks.append(delta)
             if chunks:
                 reply = "".join(chunks).strip()
         except Exception as e:
@@ -260,11 +272,24 @@ class RecareAgentOrchestrator:
                 f"VALUE: <text if fill>\n"
                 f"REASON: <1 sentence announcement to user>"
             )
-            events = model.stream(messages=[Message(role="user", content=agent_prompt)])
+            events = model.stream(
+                messages=[Message(role="user", content=agent_prompt)],
+                image_base64=ctx.get("screenshot_base64"),
+            )
             llm_text = ""
             async for ev in events:
-                if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
-                    llm_text += ev.delta.text
+                if isinstance(ev, dict):
+                    delta = ev.get("delta")
+                    if isinstance(delta, dict) and "text" in delta:
+                        llm_text += delta["text"]
+                    elif isinstance(delta, str):
+                        llm_text += delta
+                elif hasattr(ev, "delta"):
+                    delta = getattr(ev, "delta")
+                    if hasattr(delta, "text"):
+                        llm_text += delta.text
+                    elif isinstance(delta, str):
+                        llm_text += delta
 
             for line in llm_text.splitlines():
                 if line.startswith("ELEMENT_ID:"):
@@ -272,8 +297,12 @@ class RecareAgentOrchestrator:
                     matched = next((e for e in elements if e.get("element_id") == eid), None)
                     if matched:
                         candidate_el = matched
-                elif line.startswith("ACTION:") and "FILL" in line:
-                    action_type = ActionType.FILL
+                elif line.startswith("ACTION:"):
+                    act_str = line.replace("ACTION:", "").strip().upper()
+                    if "FILL" in act_str:
+                        action_type = ActionType.FILL
+                    elif "CLICK" in act_str:
+                        action_type = ActionType.CLICK
                 elif line.startswith("VALUE:"):
                     val = line.replace("VALUE:", "").strip()
                 elif line.startswith("REASON:"):
@@ -329,6 +358,12 @@ class RecareAgentOrchestrator:
                 message=f"I understood you want to '{user_request}', but I couldn't locate a matching interactive control on this page. Would you like me to highlight the available options?",
                 completion_summary="No matching target element found.",
             )
+
+        # Enforce CLICK for buttons and links, FILL for text inputs
+        if candidate_el.get("tag") in ["button", "a"] or candidate_el.get("role") in ["button", "link"]:
+            action_type = ActionType.CLICK
+        elif candidate_el.get("tag") in ["input", "textarea"] and (val or "fill" in req_lower or "type" in req_lower or "enter" in req_lower):
+            action_type = ActionType.FILL
 
         # Create proposed browser action
         action_id = f"act_{uuid.uuid4().hex[:8]}"
