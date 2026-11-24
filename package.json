@@ -1,0 +1,21 @@
+{
+  "name": "recare-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Recare — AI browser agent and accessibility assistant",
+  "scripts": {
+    "dev": "pnpm --filter @recare/extension dev",
+    "dev:extension": "pnpm --filter @recare/extension dev",
+    "build": "pnpm --filter @recare/extension build",
+    "build:extension": "pnpm --filter @recare/extension build",
+    "test": "pnpm --filter @recare/extension test && (cd backend && uv run pytest)",
+    "test:backend": "cd backend && uv run pytest",
+    "test:extension": "pnpm --filter @recare/extension test",
+    "test:e2e": "pnpm --filter @recare/extension test:e2e",
+    "backend:dev": "cd backend && uv run uvicorn app.main:app --reload --port 8000",
+    "demo:serve": "python3 -m http.server 3000 --directory apps/web/public"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

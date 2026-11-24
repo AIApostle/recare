@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dynamic Application Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; }
+    .todo-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #f3f4f6; margin-bottom: 8px; border-radius: 6px; }
+    button { background: #22c55e; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+    input { padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 70%; }
+  </style>
+</head>
+<body>
+  <a href="index.html">← Back to Test Bench</a>
+  <h1>Project Task Manager</h1>
+  <p>Tests dynamic DOM changes, delayed elements, and live state updates.</p>
+
+  <div style="display:flex;gap:8px;margin-bottom:16px;">
+    <input type="text" id="task-input" placeholder="New task title..." />
+    <button id="btn-add-task" onclick="addTask()">Add Task</button>
+  </div>
+
+  <div id="task-list">
+    <div class="todo-item"><span>Prepare monthly tax return</span><button onclick="this.parentElement.remove()">Done</button></div>
+    <div class="todo-item"><span>Update SSL certificate</span><button onclick="this.parentElement.remove()">Done</button></div>
+  </div>
+
+  <script>
+    function addTask() {
+      const input = document.getElementById('task-input');
+      const val = input.value.trim();
+      if (!val) return;
+      const div = document.createElement('div');
+      div.className = 'todo-item';
+      div.innerHTML = '<span>' + val + '</span><button onclick="this.parentElement.remove()">Done</button>';
+      document.getElementById('task-list').appendChild(div);
+      input.value = '';
+    }
+  </script>
+</body>
+</html>

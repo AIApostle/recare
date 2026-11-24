@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multi-Step Checkout Workflow</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; }
+    .step-indicator { display: flex; justify-content: space-between; margin-bottom: 24px; font-weight: bold; }
+    .step-item { padding: 8px 16px; border-radius: 20px; background: #e5e7eb; font-size: 14px; }
+    .step-item.active { background: #16a34a; color: white; }
+    .step-content { background: #f9fafb; padding: 24px; border-radius: 12px; border: 1px solid #e5e7eb; }
+    button { padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; margin-top: 16px; }
+    .btn-next { background: #16a34a; color: white; }
+    .btn-danger { background: #dc2626; color: white; }
+  </style>
+</head>
+<body>
+  <a href="index.html">← Back to Test Bench</a>
+  <h1>Multi-Step Service Activation</h1>
+
+  <div class="step-indicator">
+    <div id="ind-1" class="step-item active">1. Details</div>
+    <div id="ind-2" class="step-item">2. Review</div>
+    <div id="ind-3" class="step-item">3. Confirmation</div>
+  </div>
+
+  <div id="step-1" class="step-content">
+    <h2>Step 1: Enter Subscription Details</h2>
+    <p>Plan: <strong>Business Accessibility Pro</strong> ($99/mo)</p>
+    <label for="org-name" style="display:block;margin-bottom:6px;">Organization Name</label>
+    <input type="text" id="org-name" placeholder="Acme Labs" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ccc;" />
+    <button class="btn-next" id="btn-goto-step-2" onclick="gotoStep(2)">Proceed to Review</button>
+  </div>
+
+  <div id="step-2" class="step-content" style="display:none;">
+    <h2>Step 2: Review Subscription</h2>
+    <p>Please review before submitting the consequential order.</p>
+    <p>Monthly recurring charge: <strong>$99.00</strong></p>
+    <!-- Consequential Action: Recare policy engine will require user approval! -->
+    <button class="btn-danger" id="btn-confirm-order" onclick="gotoStep(3)">Confirm and Pay $99</button>
+  </div>
+
+  <div id="step-3" class="step-content" style="display:none;">
+    <h2>Step 3: Order Completed!</h2>
+    <p style="color:#15803d;font-weight:bold;">Your subscription has been activated successfully.</p>
+  </div>
+
+  <script>
+    function gotoStep(stepNum) {
+      [1, 2, 3].forEach(s => {
+        document.getElementById('step-' + s).style.display = s === stepNum ? 'block' : 'none';
+        document.getElementById('ind-' + s).classList.toggle('active', s === stepNum);
+      });
+    }
+  </script>
+</body>
+</html>

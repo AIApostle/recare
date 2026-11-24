@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Invoicing Portal — Form Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #111827; }
+    h1 { color: #166534; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    button { background: #16a34a; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    button:hover { background: #15803d; }
+    .notice { padding: 12px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; margin-top: 16px; display: none; }
+  </style>
+</head>
+<body>
+  <a href="index.html">← Back to Test Bench</a>
+  <h1>Create New Invoice</h1>
+  <p>Fill out the fields below. Recare can assist by identifying fields and populating details.</p>
+
+  <form id="invoice-form" onsubmit="event.preventDefault(); document.getElementById('success-notice').style.display='block';">
+    <div class="form-group">
+      <label for="client-name">Client Name</label>
+      <input type="text" id="client-name" placeholder="Acme Corporation" required />
+    </div>
+
+    <div class="form-group">
+      <label for="invoice-amount">Invoice Amount ($)</label>
+      <input type="number" id="invoice-amount" placeholder="1500" required />
+    </div>
+
+    <div class="form-group">
+      <label for="currency-select">Currency</label>
+      <select id="currency-select">
+        <option value="USD">USD ($)</option>
+        <option value="EUR">EUR (€)</option>
+        <option value="GBP">GBP (£)</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="invoice-notes">Description / Notes</label>
+      <textarea id="invoice-notes" rows="3" placeholder="Consulting services for November"></textarea>
+    </div>
+
+    <button type="submit" id="btn-submit-invoice">Submit Invoice</button>
+  </form>
+
+  <div id="success-notice" class="notice">
+    <strong>Success!</strong> Invoice was created successfully.
+  </div>
+</body>
+</html>
