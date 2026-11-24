@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: recare-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: "pip install uv && uv sync"
+    startCommand: "uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./recare.db
+      - key: MODEL_PROVIDER
+        value: gemini
+      - key: MODEL_NAME
+        value: gemini-2.5-flash-lite
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AUTO_APPROVE_LOW_RISK
+        value: "true"
+      - key: REQUIRE_APPROVAL_HIGH_RISK
+        value: "true"
+      - key: CORS_ORIGINS
+        value: '["chrome-extension://*", "https://*", "http://localhost:3000"]'
