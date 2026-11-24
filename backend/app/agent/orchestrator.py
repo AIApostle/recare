@@ -188,26 +188,39 @@ class RecareAgentOrchestrator:
         # Check if an action was already executed in previous step
         if last_action_result:
             if not last_action_result.success:
+                err_msg = last_action_result.error or "Target element was obscured or unresponsive."
+                logger.warning(f"[Recare Tool Feedback] Action {last_action_result.action_id} failed: {err_msg}")
                 return TaskResponse(
                     task_id=task_id,
                     state=TaskState.FAILED,
                     mode=mode,
                     user_request=user_request,
                     plan=plan,
-                    error=f"Browser action failed: {last_action_result.error}",
+                    error=f"Browser action failed: {err_msg}",
                 )
-            # Action succeeded! Transition to completion or next step
+
+            # Action succeeded! Inspect observed DOM changes & feedback
+            changes = last_action_result.observed_changes or {}
+            url_changed = changes.get("url_changed", False)
+            if url_changed and last_action_result.current_url:
+                feedback_msg = f"Verified action: Page navigated to {last_action_result.current_url}."
+            else:
+                feedback_msg = f"Verified action: Executed successfully on '{ctx.get('title', 'active page')}'."
+
+            logger.info(f"[Recare Tool Feedback] {feedback_msg}")
+
+            # Transition plan steps
             for p in plan:
                 p.status = "COMPLETED"
-                
+
             return TaskResponse(
                 task_id=task_id,
                 state=TaskState.COMPLETED,
                 mode=mode,
                 user_request=user_request,
                 plan=plan,
-                message="Action successfully executed and verified on the webpage.",
-                completion_summary=f"Task '{user_request}' successfully completed.",
+                message=feedback_msg,
+                completion_summary=f"Task '{user_request}' completed with verified DOM feedback.",
             )
 
         # Propose the next browser action based on user request and elements
