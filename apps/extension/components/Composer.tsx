@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowUp, Mic, MicOff, Radio, Sparkles } from 'lucide-react';
+import { ArrowUp, Mic, MicOff, Radio } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 interface ComposerProps {
@@ -24,6 +24,39 @@ export const Composer: React.FC<ComposerProps> = ({
   const isLiveVoiceRef = useRef(isLiveVoice);
   isLiveVoiceRef.current = isLiveVoice;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const voiceMenuRef = useRef<HTMLDivElement>(null);
+  const micButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Close voice popup when clicking anywhere outside or pressing Escape
+  useEffect(() => {
+    if (!showVoiceMenu) return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        voiceMenuRef.current &&
+        !voiceMenuRef.current.contains(target) &&
+        micButtonRef.current &&
+        !micButtonRef.current.contains(target)
+      ) {
+        setShowVoiceMenu(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowVoiceMenu(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showVoiceMenu]);
 
   // Auto-resize textarea to fit content and screen width
   useEffect(() => {
@@ -92,7 +125,6 @@ export const Composer: React.FC<ComposerProps> = ({
       stopVoice();
       return;
     }
-    // Toggle upward pop-up menu
     setShowVoiceMenu((prev) => !prev);
   };
 
@@ -122,29 +154,32 @@ export const Composer: React.FC<ComposerProps> = ({
   }, [onRegisterListenTrigger, isRecording]);
 
   return (
-    <div className="relative p-4 bg-white border-t border-zinc-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
-      {/* Upward Pop-up Voice Selection Menu */}
+    <div className="relative p-3 bg-white border-t border-zinc-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
+      {/* Sleek, Compact Upward Pop-up Voice Selection Menu */}
       {showVoiceMenu && !isRecording && (
-        <div className="absolute bottom-full left-4 mb-3 bg-white border border-zinc-200/90 rounded-2xl shadow-xl p-2 w-64 z-30 animate-in fade-in slide-in-from-bottom-2">
+        <div
+          ref={voiceMenuRef}
+          className="absolute bottom-full left-3 mb-2 bg-white border border-zinc-200 rounded-xl shadow-lg p-1.5 w-52 z-30 animate-in fade-in slide-in-from-bottom-1"
+        >
           <div className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-2 py-1">
-            Choose Voice Interaction
+            Voice Mode
           </div>
 
           {/* Option 1: Record & Send */}
           <button
             type="button"
             onClick={startSingleRecord}
-            className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-50/70 hover:text-emerald-950 flex items-start space-x-2.5 transition-colors group cursor-pointer"
+            className="w-full text-left p-2 rounded-lg hover:bg-emerald-50 hover:text-emerald-950 flex items-center space-x-2.5 transition-colors group cursor-pointer"
           >
-            <div className="w-7 h-7 rounded-lg bg-emerald-100/80 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Mic className="w-4 h-4" />
+            <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+              <Mic className="w-3.5 h-3.5" />
             </div>
-            <div>
-              <div className="text-xs font-semibold text-zinc-900 group-hover:text-emerald-900">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-zinc-900 group-hover:text-emerald-950 truncate">
                 Record & Send
               </div>
-              <div className="text-[11px] text-zinc-500 leading-normal">
-                Speak once, automatically submits command
+              <div className="text-[10px] text-zinc-500 leading-tight truncate">
+                Single spoken command
               </div>
             </div>
           </button>
@@ -153,18 +188,18 @@ export const Composer: React.FC<ComposerProps> = ({
           <button
             type="button"
             onClick={startLiveChat}
-            className="w-full text-left p-2.5 rounded-xl hover:bg-rose-50/70 hover:text-rose-950 flex items-start space-x-2.5 transition-colors group mt-1 cursor-pointer"
+            className="w-full text-left p-2 rounded-lg hover:bg-rose-50 hover:text-rose-950 flex items-center space-x-2.5 transition-colors group mt-0.5 cursor-pointer"
           >
-            <div className="w-7 h-7 rounded-lg bg-rose-100/80 text-rose-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Radio className="w-4 h-4 animate-pulse" />
+            <div className="w-6 h-6 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
             </div>
-            <div>
-              <div className="text-xs font-semibold text-zinc-900 group-hover:text-rose-900 flex items-center gap-1.5">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-zinc-900 group-hover:text-rose-950 flex items-center gap-1">
                 <span>Live Voice Chat</span>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-700 uppercase">Live</span>
+                <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-rose-100 text-rose-700 uppercase">Live</span>
               </div>
-              <div className="text-[11px] text-zinc-500 leading-normal">
-                Continuous hands-free conversation with agent
+              <div className="text-[10px] text-zinc-500 leading-tight truncate">
+                Continuous hands-free chat
               </div>
             </div>
           </button>
@@ -173,15 +208,15 @@ export const Composer: React.FC<ComposerProps> = ({
 
       {/* Live Voice Indicator Banner */}
       {isLiveVoice && (
-        <div className="mb-2.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between shadow-xs animate-in fade-in">
+        <div className="mb-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between shadow-xs animate-in fade-in">
           <div className="flex items-center space-x-2 text-xs font-semibold">
-            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-            <span>LIVE CONVERSATION ACTIVE — Speak freely</span>
+            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+            <span className="truncate">LIVE VOICE — Speak freely</span>
           </div>
           <button
             type="button"
             onClick={stopVoice}
-            className="text-[11px] font-medium bg-black/25 hover:bg-black/35 px-2.5 py-1 rounded-lg transition-colors"
+            className="text-[10px] font-medium bg-black/25 hover:bg-black/35 px-2 py-0.5 rounded-md transition-colors flex-shrink-0 ml-2"
           >
             End Live
           </button>
@@ -190,8 +225,8 @@ export const Composer: React.FC<ComposerProps> = ({
 
       {/* Notice Message */}
       {voiceNotice && !isLiveVoice && (
-        <div className="mb-2.5 text-xs py-2 px-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between shadow-xs animate-in fade-in">
-          <span className="font-medium">{voiceNotice}</span>
+        <div className="mb-2 text-xs py-1.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between shadow-xs animate-in fade-in">
+          <span className="font-medium truncate">{voiceNotice}</span>
           <button
             type="button"
             onClick={() => setVoiceNotice(null)}
@@ -202,13 +237,14 @@ export const Composer: React.FC<ComposerProps> = ({
         </div>
       )}
 
-      {/* Elevated, highly visible input card */}
-      <div className="bg-white border-2 border-zinc-300 rounded-2xl p-2 flex items-center gap-2 shadow-[0_2px_10px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.04)] focus-within:border-zinc-800 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.12),0_2px_4px_rgba(0,0,0,0.06)] transition-all duration-200">
+      {/* Elevated, responsive input card */}
+      <div className="bg-white border-2 border-zinc-300 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] focus-within:border-zinc-800 transition-all duration-200">
         {/* Voice Trigger Button with Pop-up Menu */}
         <button
+          ref={micButtonRef}
           type="button"
           onClick={handleMicClick}
-          className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+          className={`p-2 rounded-xl transition-all cursor-pointer flex-shrink-0 ${
             isLiveVoice
               ? 'bg-rose-500 text-white animate-pulse shadow-md ring-2 ring-rose-400'
               : isRecording
@@ -232,7 +268,7 @@ export const Composer: React.FC<ComposerProps> = ({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={isLiveVoice ? 'Live Voice listening... (or type here)' : 'Ask a question or request an action...'}
-          className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-sm text-zinc-950 placeholder:text-zinc-400 px-2 py-1.5 shadow-none font-medium resize-none min-h-[36px] max-h-[120px] leading-relaxed break-words overflow-y-auto"
+          className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm text-zinc-950 placeholder:text-zinc-400 px-2 py-1 shadow-none font-medium resize-none min-h-[34px] max-h-[120px] leading-relaxed break-words overflow-y-auto"
           style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
           aria-label="Message Recare assistant"
         />
@@ -242,7 +278,7 @@ export const Composer: React.FC<ComposerProps> = ({
           type="button"
           onClick={handleSend}
           disabled={!input.trim() || disabled}
-          className="w-9 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:pointer-events-none shadow-sm flex-shrink-0 cursor-pointer"
+          className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:pointer-events-none shadow-sm flex-shrink-0 cursor-pointer"
           aria-label="Send message"
           title="Send"
         >

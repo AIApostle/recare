@@ -51,6 +51,23 @@ export class NanoDetector {
 
       const avail = capabilities.available;
       if (avail === 'readily' || avail === 'available') {
+        // Verify execution config is genuinely available before marking as ready
+        if (typeof languageModel.create === 'function') {
+          try {
+            const testSession = await languageModel.create();
+            if (testSession && typeof testSession.destroy === 'function') {
+              testSession.destroy();
+            }
+          } catch (createErr: any) {
+            console.info('[Recare] Gemini Nano execution config is downloading/missing:', createErr?.message || createErr);
+            return {
+              available: false,
+              status: 'unsupported',
+              message: 'Gemini Nano execution config is missing or downloading in chrome://components. Cloud inference will be used.',
+            };
+          }
+        }
+
         const result: NanoAvailability = {
           available: true,
           status: 'ready',

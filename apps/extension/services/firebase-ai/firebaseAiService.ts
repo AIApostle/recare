@@ -13,6 +13,7 @@ import { getFirebaseConfig } from './firebaseConfig';
 import { initAppCheck } from './appCheck';
 import { NanoDetector, NanoAvailability } from './nanoDetector';
 import { PageContext, BrowserAction, ActionType } from '../../types';
+import { RecareApiClient } from '../api';
 
 export type SelectedInferenceMode =
   | 'PREFER_ON_DEVICE'
@@ -233,6 +234,24 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         } catch (cloudErr: any) {
           console.warn('[Recare] Direct cloud inference also threw:', cloudErr);
         }
+      }
+
+      // Fallback: Query backend chat agent (which cascades through Gemini 2.5 Flash Lite -> 2.5 Flash -> 1.5 Flash -> 1.5 Pro)
+      try {
+        const backendRes = await RecareApiClient.sendChat(
+          prompt,
+          pageContext,
+          'guide',
+          simplified
+        );
+        this.activeInferencePath = 'in_cloud';
+        return {
+          text: backendRes.reply,
+          inferenceSource: 'in_cloud',
+          modelUsed: 'Recare Cloud Agent (Gemini Multi-Model Fallback)',
+        };
+      } catch (backendErr: any) {
+        console.warn('[Recare] Backend agent fallback also unavailable:', backendErr);
       }
 
       this.activeInferencePath = 'idle';

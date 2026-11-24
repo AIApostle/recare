@@ -44,11 +44,47 @@ textarea:focus-visible {
   }
 }
 
-/* Text Size classes */
-.text-size-small { font-size: 0.875rem; }
-.text-size-medium { font-size: 1rem; }
-.text-size-large { font-size: 1.125rem; }
-.text-size-xlarge { font-size: 1.25rem; }
+/* Text Size & UI Scale (Instantly scales entire sidepanel) */
+.text-size-small {
+  zoom: 0.9;
+}
+.text-size-medium {
+  zoom: 1.0;
+}
+.text-size-large {
+  zoom: 1.15;
+}
+.text-size-xlarge {
+  zoom: 1.28;
+}
+
+/* High Contrast Mode: Crisp dark outlines, high-contrast borders and text */
+.high-contrast-mode {
+  filter: contrast(125%);
+}
+.high-contrast-mode * {
+  border-color: #09090b !important;
+}
+.high-contrast-mode button,
+.high-contrast-mode [role="button"],
+.high-contrast-mode input,
+.high-contrast-mode textarea,
+.high-contrast-mode select {
+  border-width: 1.5px !important;
+  border-color: #09090b !important;
+}
+
+/* Reduced Motion Mode: Completely disable animations, transitions, and pulsing indicators */
+.reduced-motion-mode,
+.reduced-motion-mode *,
+.reduced-motion-mode *::before,
+.reduced-motion-mode *::after {
+  animation: none !important;
+  animation-duration: 0.001ms !important;
+  transition: none !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
 
 /* Sidepanel responsive text-wrapping rules (prevents single-line overflow) */
 * {

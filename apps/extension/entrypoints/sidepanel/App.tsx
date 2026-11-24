@@ -150,13 +150,18 @@ export default function App() {
     const mode = preferences.response_output_mode || 'both';
     const shouldSpeak = (mode === 'both' || mode === 'voice' || preferences.voice_enabled) && mode !== 'text';
     if (shouldSpeak && (spokenText || text)) {
-      VoiceService.speak(spokenText || text, preferences.speech_rate, () => {
-        if (isLiveVoiceActive && listenTriggerRef.current) {
-          setTimeout(() => {
-            listenTriggerRef.current?.();
-          }, 350);
-        }
-      });
+      VoiceService.speak(
+        spokenText || text,
+        preferences.speech_rate,
+        () => {
+          if (isLiveVoiceActive && listenTriggerRef.current) {
+            setTimeout(() => {
+              listenTriggerRef.current?.();
+            }, 350);
+          }
+        },
+        preferences.voice_gender !== 'neutral' ? preferences.voice_gender : undefined
+      );
     }
   };
 
@@ -347,6 +352,24 @@ export default function App() {
         return;
       }
 
+      // If user disabled auto-approval of safe actions, prompt even for low-risk actions
+      if (taskRes.current_action && preferences.auto_approve_low_risk === false) {
+        setPendingApproval({
+          approval_id: crypto.randomUUID(),
+          task_id: taskRes.task_id,
+          action_id: taskRes.current_action.action_id,
+          action_type: taskRes.current_action.type,
+          risk_level: taskRes.current_action.risk_level,
+          target_description:
+            taskRes.current_action.target?.accessible_name ||
+            taskRes.current_action.target?.element_id ||
+            'Webpage element',
+          reason: taskRes.current_action.reason,
+        });
+        setTaskState('WAITING_FOR_USER_APPROVAL');
+        return;
+      }
+
       // If action is ready to execute immediately
       if (taskRes.current_action) {
         await executeActionCycle(taskRes.task_id, taskRes.current_action);
@@ -493,7 +516,9 @@ export default function App() {
           : preferences.text_size === 'xlarge'
           ? 'text-size-xlarge'
           : 'text-size-medium'
-      } ${preferences.high_contrast ? 'contrast-125' : ''}`}
+      } ${preferences.high_contrast ? 'high-contrast-mode' : ''} ${
+        preferences.reduced_motion ? 'reduced-motion-mode' : ''
+      }`}
     >
       <Header
         currentDomain={pageContext?.domain}

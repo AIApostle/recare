@@ -6,6 +6,7 @@
 export class VoiceService {
   private static recognition: any = null;
   private static isListening = false;
+  private static cachedVoices: SpeechSynthesisVoice[] = [];
 
   /** Initialize Speech Recognition with cross-browser support */
   private static getSpeechRecognition() {
@@ -106,8 +107,24 @@ export class VoiceService {
     this.isListening = false;
   }
 
-  /** Text-to-Speech: Spoken agent responses with optional completion callback */
-  static speak(text: string, speechRate: number = 1.0, onEnd?: () => void): void {
+  /** Retrieve available system speech synthesis voices */
+  static getAvailableVoices(): SpeechSynthesisVoice[] {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return [];
+    if (this.cachedVoices.length > 0) return this.cachedVoices;
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      this.cachedVoices = voices;
+    }
+    return voices;
+  }
+
+  /** Text-to-Speech: Spoken agent responses with optional completion callback and voice selection */
+  static speak(
+    text: string,
+    speechRate: number = 1.0,
+    onEnd?: () => void,
+    preferredVoiceName?: string
+  ): void {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
       onEnd?.();
       return;
@@ -129,6 +146,13 @@ export class VoiceService {
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = Math.max(0.5, Math.min(2.0, speechRate));
     utterance.lang = 'en-US';
+
+    // Apply voice selection if specified
+    const voices = this.getAvailableVoices();
+    if (preferredVoiceName && voices.length > 0) {
+      const matched = voices.find((v) => v.name === preferredVoiceName || v.voiceURI === preferredVoiceName);
+      if (matched) utterance.voice = matched;
+    }
 
     if (onEnd) {
       utterance.onend = () => onEnd();
