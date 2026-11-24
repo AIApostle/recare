@@ -32,7 +32,7 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
       role="log"
       aria-live="polite"
       aria-label="Conversation and task history"
-      className="flex-1 overflow-y-auto p-4 space-y-4"
+      className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 min-w-0 max-w-full"
     >
       {/* Empty State Onboarding */}
       {messages.length === 0 && (
@@ -65,7 +65,7 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
       {messages.map((msg) => (
         <div
           key={msg.id}
-          className={`flex items-start space-x-2.5 ${
+          className={`flex items-start space-x-2.5 min-w-0 max-w-full ${
             msg.sender === 'user' ? 'justify-end' : 'justify-start'
           }`}
         >
@@ -76,7 +76,7 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
           )}
 
           <div
-            className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed ${
+            className={`max-w-[85%] min-w-0 rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed overflow-hidden ${
               msg.sender === 'user'
                 ? 'bg-zinc-950 text-white rounded-tr-xs shadow-xs'
                 : 'bg-white border border-zinc-200/80 text-zinc-800 rounded-tl-xs shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
@@ -101,8 +101,12 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
               )}
             </div>
 
-            {/* Message Body */}
-            <div className="whitespace-pre-line text-zinc-800 dark:text-zinc-100 font-normal">
+            {/* Message Body with Guaranteed Screen Wrapping */}
+            <div
+              className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] font-normal leading-relaxed ${
+                msg.sender === 'user' ? 'text-white' : 'text-zinc-800'
+              }`}
+            >
               {msg.text}
             </div>
 
@@ -116,7 +120,7 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
                   {msg.plan.map((step) => (
                     <div
                       key={step.step_number}
-                      className={`flex items-start space-x-2 p-2 rounded-xl text-xs transition-colors ${
+                      className={`flex items-start space-x-2 p-2 rounded-xl text-xs transition-colors min-w-0 ${
                         step.status === 'COMPLETED'
                           ? 'bg-emerald-50 text-emerald-900'
                           : step.status === 'IN_PROGRESS'
@@ -131,7 +135,7 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
                       ) : (
                         <Clock className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 mt-0.5" />
                       )}
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0 break-words [overflow-wrap:anywhere] [word-break:break-word]">
                         <span>{step.description}</span>
                         {step.risk_level === 'HIGH' && (
                           <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 uppercase">
