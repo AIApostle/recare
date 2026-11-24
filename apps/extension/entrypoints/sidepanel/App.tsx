@@ -145,17 +145,19 @@ export default function App() {
       },
     ]);
 
-    if (preferences.voice_enabled && spokenText) {
-      VoiceService.speak(spokenText, preferences.speech_rate);
+    const mode = preferences.response_output_mode || 'both';
+    const shouldSpeak = (mode === 'both' || mode === 'voice' || preferences.voice_enabled) && mode !== 'text';
+    if (shouldSpeak && (spokenText || text)) {
+      VoiceService.speak(spokenText || text, preferences.speech_rate);
     }
   };
 
   /** Handle user prompt input (text or speech) */
   const handleUserMessage = async (userInput: string) => {
     addUserMessage(userInput);
-    await refreshPageContext();
+    const liveCtx = await refreshPageContext();
 
-    const currentCtx = pageContext || {
+    const currentCtx = liveCtx || pageContext || {
       url: window.location.href,
       domain: window.location.hostname,
       title: document.title || 'Webpage',
@@ -241,7 +243,7 @@ export default function App() {
       const taskRes = await RecareApiClient.createTask(
         userInput,
         preferences.interaction_mode,
-        pageContext || undefined
+        currentCtx
       );
 
       setActiveTaskId(taskRes.task_id);
