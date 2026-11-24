@@ -1,16 +1,18 @@
 import React from 'react';
-import { Eye, Settings, History } from 'lucide-react';
+import { Eye, Settings, History, Plus } from 'lucide-react';
 import { CurrentInferencePath } from '../services/firebase-ai/firebaseAiService';
 
 interface HeaderProps {
   currentDomain?: string;
   isBackendConnected?: boolean;
   inferencePath?: CurrentInferencePath;
+  onNewConversation?: () => void;
   onOpenSettings: () => void;
   onOpenHistory?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
+  onNewConversation,
   onOpenSettings,
   onOpenHistory,
 }) => {
@@ -30,6 +32,18 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Clean Utility Actions */}
       <div className="flex items-center space-x-1">
+        {onNewConversation && (
+          <button
+            type="button"
+            onClick={onNewConversation}
+            className="p-2 rounded-xl text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 active:scale-95 transition-all"
+            aria-label="Start new conversation"
+            title="New Conversation"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        )}
+
         {onOpenHistory && (
           <button
             type="button"

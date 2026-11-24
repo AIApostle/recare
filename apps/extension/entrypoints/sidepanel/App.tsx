@@ -391,6 +391,18 @@ export default function App() {
     addAssistantMessage('Manual takeover initiated. You have direct control of the webpage.');
   };
 
+  const handleNewConversation = async () => {
+    setMessages([]);
+    setActiveTaskId(null);
+    setTaskState('IDLE');
+    setPendingApproval(null);
+    setInferencePath('idle');
+    try {
+      await MessagingService.sendToActiveTab({ type: 'CLEAR_HIGHLIGHTS' });
+    } catch {}
+    setShowHistory(false);
+  };
+
   return (
     <div
       className={`flex flex-col h-screen w-full bg-white select-text ${
@@ -407,6 +419,7 @@ export default function App() {
         currentDomain={pageContext?.domain}
         isBackendConnected={isBackendConnected}
         inferencePath={inferencePath}
+        onNewConversation={handleNewConversation}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHistory={() => setShowHistory(true)}
       />
@@ -454,6 +467,7 @@ export default function App() {
       {showHistory && (
         <TaskHistory
           onClose={() => setShowHistory(false)}
+          onNewConversation={handleNewConversation}
           onSelectTask={(t) => {
             setShowHistory(false);
             addAssistantMessage(
