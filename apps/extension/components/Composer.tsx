@@ -23,15 +23,27 @@ export const Composer: React.FC<ComposerProps> = ({
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const isLiveVoiceRef = useRef(isLiveVoice);
   isLiveVoiceRef.current = isLiveVoice;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea to fit content and screen width
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [input]);
 
   const handleSend = () => {
     const text = input.trim();
     if (!text || disabled) return;
     onSendMessage(text);
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -211,15 +223,16 @@ export const Composer: React.FC<ComposerProps> = ({
           {isRecording || isLiveVoice ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
         </button>
 
-        {/* Input Field */}
-        <input
-          type="text"
+        {/* Auto-resizing, responsive multi-line Textarea that wraps at screen boundary */}
+        <textarea
+          ref={textareaRef}
+          rows={1}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={isLiveVoice ? 'Live Voice listening... (or type here)' : 'Ask a question or request an action...'}
-          className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-sm text-zinc-950 placeholder:text-zinc-400 px-2 py-1 shadow-none font-medium"
+          className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 text-sm text-zinc-950 placeholder:text-zinc-400 px-2 py-1.5 shadow-none font-medium resize-none min-h-[36px] max-h-[120px] leading-relaxed break-words overflow-y-auto"
           style={{ outline: 'none', border: 'none', boxShadow: 'none' }}
           aria-label="Message Recare assistant"
         />

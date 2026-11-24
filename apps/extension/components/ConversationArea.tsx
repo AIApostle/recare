@@ -110,50 +110,11 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
             {/* Message Body with Guaranteed Screen Wrapping */}
             <div
               className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] font-normal leading-relaxed ${
-                msg.sender === 'user' ? 'text-white' : 'text-zinc-800'
+                msg.sender === 'user' ? 'text-white' : 'text-zinc-950 font-normal'
               }`}
             >
               {msg.text}
             </div>
-
-            {/* Step-by-Step Execution Plan */}
-            {msg.plan && msg.plan.length > 0 && (
-              <div className="mt-3 pt-2.5 border-t border-zinc-100 space-y-2">
-                <div className="text-[11px] font-semibold text-zinc-900 tracking-tight">
-                  Execution Plan:
-                </div>
-                <div className="space-y-1.5">
-                  {msg.plan.map((step) => (
-                    <div
-                      key={step.step_number}
-                      className={`flex items-start space-x-2 p-2 rounded-xl text-xs transition-colors min-w-0 ${
-                        step.status === 'COMPLETED'
-                          ? 'bg-emerald-50 text-emerald-900'
-                          : step.status === 'IN_PROGRESS'
-                          ? 'bg-zinc-100 text-zinc-900 font-medium border border-zinc-200/70'
-                          : 'bg-zinc-50/70 text-zinc-600'
-                      }`}
-                    >
-                      {step.status === 'COMPLETED' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      ) : step.status === 'IN_PROGRESS' ? (
-                        <div className="w-3.5 h-3.5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin flex-shrink-0 mt-0.5" />
-                      ) : (
-                        <Clock className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 mt-0.5" />
-                      )}
-                      <div className="flex-1 min-w-0 break-words [overflow-wrap:anywhere] [word-break:break-word]">
-                        <span>{step.description}</span>
-                        {step.risk_level === 'HIGH' && (
-                          <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 uppercase">
-                            Approval Required
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Suggested Follow-up Actions */}
             {msg.suggestedActions && msg.suggestedActions.length > 0 && (

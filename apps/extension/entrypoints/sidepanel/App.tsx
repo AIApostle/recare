@@ -174,23 +174,26 @@ export default function App() {
     };
 
     const trimmedInput = userInput.trim().toLowerCase();
+    
+    // Explicit action intent check (user wants to perform a task on the website)
+    const actionWords = ['signin', 'sign in', 'login', 'log in', 'download', 'click', 'press', 'tap', 'fill', 'type', 'enter', 'submit', 'search', 'find', 'open', 'buy', 'order', 'register', 'watch', 'play', 'go to'];
+    const hasExplicitActionIntent = actionWords.some((w) => trimmedInput.includes(w));
+
+    // Only route to conversational explanation if NOT an action request
     const isQuestionOrExplanation =
-      preferences.interaction_mode === 'guide' ||
-      trimmedInput.endsWith('?') ||
+      !hasExplicitActionIntent &&
+      (trimmedInput.endsWith('?') ||
       trimmedInput.startsWith('what') ||
       trimmedInput.startsWith('explain') ||
       trimmedInput.startsWith('summar') ||
       trimmedInput.startsWith('simplif') ||
       trimmedInput.startsWith('how') ||
-      trimmedInput.startsWith('can') ||
-      trimmedInput.startsWith('could') ||
-      trimmedInput.startsWith('help') ||
       trimmedInput.startsWith('hi') ||
       trimmedInput.startsWith('hello') ||
-      trimmedInput.startsWith('tell') ||
-      trimmedInput.includes('help me') ||
-      trimmedInput.includes('can you') ||
-      trimmedInput === 'help';
+      trimmedInput.startsWith('who are you') ||
+      trimmedInput.startsWith('where am i') ||
+      trimmedInput === 'where am i' ||
+      trimmedInput === 'help');
 
     // 1. On-Device / Hybrid Explanation with Firebase AI Logic (Gemini Nano 4)
     if (isQuestionOrExplanation) {

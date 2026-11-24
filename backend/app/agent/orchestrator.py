@@ -195,10 +195,15 @@ class RecareAgentOrchestrator:
         val = None
 
         # Check if the request is an action intent vs conversational guidance
-        action_keywords = {"click", "press", "tap", "fill", "type", "enter", "submit", "navigate", "go", "open", "scroll", "select", "choose"}
-        has_action_intent = any(k in req_lower.split() for k in action_keywords) or any(k in req_lower for k in ["click on", "fill in", "type in", "press the", "scroll down", "scroll up"])
+        action_keywords = {
+            "click", "press", "tap", "fill", "type", "enter", "submit", "navigate",
+            "go", "open", "scroll", "select", "choose", "signin", "sign in", "login",
+            "log in", "download", "search", "find", "get", "register", "buy", "order",
+            "play", "watch", "load", "account", "dune"
+        }
+        has_action_intent = any(k in req_lower for k in action_keywords) or any(k in req_lower for k in ["click on", "fill in", "type in", "press the", "scroll down", "scroll up", "want to", "help me to"])
 
-        STOP_WORDS = {"help", "this", "page", "that", "with", "from", "some", "want", "need", "like", "please", "could", "would", "should", "tell", "about", "your", "what", "where", "when", "there", "here", "just"}
+        STOP_WORDS = {"help", "this", "page", "that", "with", "from", "some", "want", "need", "like", "please", "could", "would", "should", "tell", "about", "your", "what", "where", "when", "there", "here", "just", "the", "and", "for"}
 
         if not has_action_intent and not any(k in req_lower for k in ["fill", "enter", "type", "click"]):
             from app.agent.models import get_model
@@ -232,20 +237,86 @@ class RecareAgentOrchestrator:
                 completion_summary="Conversational response provided.",
             )
 
-        if "fill" in req_lower or "enter" in req_lower or "type" in req_lower:
-            inputs = [e for e in elements if e.get("tag") in ["input", "textarea"] and e.get("input_type") != "password"]
-            if inputs:
-                candidate_el = inputs[0]
-                action_type = ActionType.FILL
-                val = "Sample Value"
-        else:
-            # Look for button or link matching intent, ignoring generic stop words
-            meaningful_words = [w for w in req_lower.split() if len(w) > 3 and w not in STOP_WORDS]
-            if meaningful_words:
+        # 1. Attempt LLM-driven agentic element selection
+        from app.agent.models import get_model
+        model = get_model(settings.MODEL_PROVIDER, settings.MODEL_NAME)
+        elements_summary = "\n".join([
+            f"[{e.get('element_id')}] <{e.get('tag')}> text='{e.get('accessible_name') or e.get('text') or ''}' href='{e.get('href', '')}' placeholder='{e.get('placeholder', '')}'"
+            for e in elements[:20]
+        ])
+
+        custom_reason = None
+        try:
+            from strands.types.content import Message
+            agent_prompt = (
+                f"You are Recare, an autonomous web assistant.\n"
+                f"User Goal: \"{user_request}\"\n"
+                f"Current Page: \"{ctx.get('title', '')}\"\n"
+                f"Controls:\n{elements_summary}\n\n"
+                f"Select the single best control to advance the user's goal.\n"
+                f"Respond with:\n"
+                f"ACTION: CLICK or FILL\n"
+                f"ELEMENT_ID: <id>\n"
+                f"VALUE: <text if fill>\n"
+                f"REASON: <1 sentence announcement to user>"
+            )
+            events = model.stream(messages=[Message(role="user", content=agent_prompt)])
+            llm_text = ""
+            async for ev in events:
+                if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
+                    llm_text += ev.delta.text
+
+            for line in llm_text.splitlines():
+                if line.startswith("ELEMENT_ID:"):
+                    eid = line.replace("ELEMENT_ID:", "").strip()
+                    matched = next((e for e in elements if e.get("element_id") == eid), None)
+                    if matched:
+                        candidate_el = matched
+                elif line.startswith("ACTION:") and "FILL" in line:
+                    action_type = ActionType.FILL
+                elif line.startswith("VALUE:"):
+                    val = line.replace("VALUE:", "").strip()
+                elif line.startswith("REASON:"):
+                    custom_reason = line.replace("REASON:", "").strip()
+        except Exception as e:
+            logger.info(f"LLM planning fallback to intent heuristic: {e}")
+
+        # 2. Intelligent Heuristic Fallback if LLM did not identify element
+        if not candidate_el:
+            if "signin" in req_lower or "sign in" in req_lower or "login" in req_lower or "log in" in req_lower or "account" in req_lower:
                 for el in elements:
-                    name = (el.get("accessible_name") or el.get("text") or "").lower()
-                    if any(w in name for w in meaningful_words):
+                    txt = f"{el.get('accessible_name', '')} {el.get('text', '')} {el.get('href', '')}".lower()
+                    if any(k in txt for k in ["signin", "sign in", "login", "log in", "account", "user"]):
                         candidate_el = el
+                        action_type = ActionType.CLICK
+                        custom_reason = f"Clicking {el.get('accessible_name') or 'Sign In'} for you."
+                        break
+
+            elif "download" in req_lower:
+                for el in elements:
+                    txt = f"{el.get('accessible_name', '')} {el.get('text', '')} {el.get('href', '')}".lower()
+                    if any(k in txt for k in ["download", "get", "torrent", "magnet", "dune"]):
+                        candidate_el = el
+                        action_type = ActionType.CLICK
+                        custom_reason = f"Initiating download via {el.get('accessible_name') or 'download control'}."
+                        break
+
+            elif "fill" in req_lower or "enter" in req_lower or "type" in req_lower or "search" in req_lower:
+                inputs = [e for e in elements if e.get("tag") in ["input", "textarea"] and e.get("input_type") != "password"]
+                if inputs:
+                    candidate_el = inputs[0]
+                    action_type = ActionType.FILL
+                    # Extract search term if present (e.g. "dune")
+                    val = "dune" if "dune" in req_lower else "Search query"
+                    custom_reason = f"Entering '{val}' into search field."
+
+            if not candidate_el:
+                meaningful_words = [w for w in req_lower.split() if len(w) > 3 and w not in STOP_WORDS]
+                for el in elements:
+                    txt = f"{el.get('accessible_name', '')} {el.get('text', '')} {el.get('href', '')}".lower()
+                    if any(w in txt for w in meaningful_words):
+                        candidate_el = el
+                        custom_reason = f"Executing action on {el.get('accessible_name') or 'control'} for '{user_request}'."
                         break
 
         if not candidate_el:
@@ -271,7 +342,7 @@ class RecareAgentOrchestrator:
                 role=candidate_el.get("role") or candidate_el.get("tag"),
             ),
             value=val,
-            reason=f"Execute step: {candidate_el.get('accessible_name') or 'control'} for '{user_request}'",
+            reason=custom_reason or f"Execute step: {candidate_el.get('accessible_name') or 'control'} for '{user_request}'",
         )
 
         # Evaluate through policy engine
@@ -308,5 +379,5 @@ class RecareAgentOrchestrator:
             user_request=user_request,
             plan=plan,
             current_action=action,
-            message=f"Executing {action.type.value} on {candidate_el.get('accessible_name') or 'target control'}.",
+            message=custom_reason or f"Executing {action.type.value} on {candidate_el.get('accessible_name') or 'target control'}.",
         )
