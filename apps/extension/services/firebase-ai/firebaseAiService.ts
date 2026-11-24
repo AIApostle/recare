@@ -181,23 +181,28 @@ Interactive Controls:
 ${elements}
 Summarize the page purpose, main interactive controls, and recommended next action for the user.`;
 
-    let modeEnum: InferenceMode = InferenceMode.PREFER_IN_CLOUD;
-    if (selectedMode === 'ONLY_ON_DEVICE') modeEnum = InferenceMode.ONLY_ON_DEVICE;
-    else if (selectedMode === 'PREFER_ON_DEVICE') modeEnum = InferenceMode.PREFER_ON_DEVICE;
-    else if (selectedMode === 'ONLY_IN_CLOUD') modeEnum = InferenceMode.ONLY_IN_CLOUD;
+    const nanoStatus = await NanoDetector.checkAvailability();
+    let modeEnum: InferenceMode = InferenceMode.ONLY_IN_CLOUD;
 
-    this.activeInferencePath = 'in_cloud';
+    if (selectedMode === 'ONLY_ON_DEVICE' || selectedMode === 'PREFER_ON_DEVICE') {
+      if (nanoStatus.available && nanoStatus.status === 'ready') {
+        modeEnum = selectedMode === 'ONLY_ON_DEVICE' ? InferenceMode.ONLY_ON_DEVICE : InferenceMode.PREFER_ON_DEVICE;
+      } else {
+        console.info('[Recare] On-device Nano not ready, using Cloud inference mode.');
+        modeEnum = InferenceMode.ONLY_IN_CLOUD;
+      }
+    }
+
+    this.activeInferencePath = modeEnum === InferenceMode.ONLY_ON_DEVICE ? 'on_device' : 'in_cloud';
 
     try {
       const model = getGenerativeModel(this.ai, {
         mode: modeEnum,
       });
 
-      // Attempt inference through Firebase AI Logic
       const result = await model.generateContent(prompt);
       const text = result.response.text();
 
-      // Check inference source from response metadata
       const source = (result as any).inferenceSource === InferenceSource.ON_DEVICE
         ? 'on_device'
         : 'in_cloud';
@@ -210,28 +215,32 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         modelUsed: source === 'on_device' ? 'Gemini Nano 4 (On-Device)' : 'Gemini 2.5 Flash Lite (Cloud)',
       };
     } catch (err: any) {
-      console.warn('[Recare] Cloud inference unavailable, falling back to local on-device:', err);
-      this.activeInferencePath = 'on_device';
+      console.warn('[Recare] Primary inference mode failed:', err);
 
-      // Fallback 1: Try On-Device Gemini Nano 4
-      try {
-        const localModel = getGenerativeModel(this.ai, {
-          mode: InferenceMode.ONLY_ON_DEVICE,
-        });
-        const localRes = await localModel.generateContent(prompt);
-        return {
-          text: localRes.response.text(),
-          inferenceSource: 'on_device',
-          modelUsed: 'Gemini Nano 4 (On-Device Fallback)',
-        };
-      } catch (localErr: any) {
-        this.activeInferencePath = 'idle';
-        return {
-          text: 'AI model is currently not available.',
-          inferenceSource: 'on_device',
-          modelUsed: 'Unavailable',
-        };
+      // If on-device failed due to missing execution config or error, try direct cloud
+      if (modeEnum !== InferenceMode.ONLY_IN_CLOUD) {
+        try {
+          const cloudModel = getGenerativeModel(this.ai, {
+            mode: InferenceMode.ONLY_IN_CLOUD,
+          });
+          const cloudRes = await cloudModel.generateContent(prompt);
+          this.activeInferencePath = 'in_cloud';
+          return {
+            text: cloudRes.response.text(),
+            inferenceSource: 'in_cloud',
+            modelUsed: 'Gemini 2.5 Flash Lite (Cloud Fallback)',
+          };
+        } catch (cloudErr: any) {
+          console.warn('[Recare] Direct cloud inference also threw:', cloudErr);
+        }
       }
+
+      this.activeInferencePath = 'idle';
+      return {
+        text: 'AI model is currently not available.',
+        inferenceSource: 'on_device',
+        modelUsed: 'Unavailable',
+      };
     }
   }
 
