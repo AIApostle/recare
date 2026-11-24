@@ -84,9 +84,12 @@ export class VoiceService {
     this.isListening = false;
   }
 
-  /** Text-to-Speech: Spoken agent responses */
-  static speak(text: string, speechRate: number = 1.0): void {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  /** Text-to-Speech: Spoken agent responses with optional completion callback */
+  static speak(text: string, speechRate: number = 1.0, onEnd?: () => void): void {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      onEnd?.();
+      return;
+    }
 
     this.stopSpeaking();
 
@@ -96,11 +99,19 @@ export class VoiceService {
       .replace(/[*_#`]/g, '') // bold/italic/headings/code
       .trim();
 
-    if (!cleanText) return;
+    if (!cleanText) {
+      onEnd?.();
+      return;
+    }
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = Math.max(0.5, Math.min(2.0, speechRate));
     utterance.lang = 'en-US';
+
+    if (onEnd) {
+      utterance.onend = () => onEnd();
+      utterance.onerror = () => onEnd();
+    }
 
     window.speechSynthesis.speak(utterance);
   }

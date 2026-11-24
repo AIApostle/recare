@@ -6,12 +6,46 @@ import {
   InteractionMode,
 } from '../types';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_RECARE_API_URL || 'http://127.0.0.1:8000';
+let cachedApiUrl: string | null = null;
+
+export const getApiBaseUrl = async (): Promise<string> => {
+  if (cachedApiUrl) return cachedApiUrl;
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.sync) {
+      const data = await chrome.storage.sync.get('recare_api_url');
+      if (data?.recare_api_url && typeof data.recare_api_url === 'string') {
+        cachedApiUrl = data.recare_api_url.replace(/\/+$/, '');
+        return cachedApiUrl;
+      }
+    }
+  } catch {
+    // Non-extension or test environment fallback
+  }
+  const envUrl = (import.meta as any).env?.VITE_RECARE_API_URL;
+  cachedApiUrl = (envUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  return cachedApiUrl;
+};
+
+export const setApiBaseUrlOverride = async (url: string | null): Promise<void> => {
+  cachedApiUrl = url ? url.replace(/\/+$/, '') : null;
+  try {
+    if (typeof chrome !== 'undefined' && chrome?.storage?.sync) {
+      if (url) {
+        await chrome.storage.sync.set({ recare_api_url: url.replace(/\/+$/, '') });
+      } else {
+        await chrome.storage.sync.remove('recare_api_url');
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+};
 
 export class RecareApiClient {
   static async checkHealth(): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE_URL}/health`);
+      const baseUrl = await getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/health`);
       return res.ok;
     } catch {
       return false;
@@ -20,7 +54,8 @@ export class RecareApiClient {
 
   static async listTasks(limit: number = 20): Promise<TaskResponse[]> {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/tasks?limit=${limit}`);
+      const baseUrl = await getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/v1/tasks?limit=${limit}`);
       if (!res.ok) return [];
       return await res.json();
     } catch {
@@ -40,7 +75,8 @@ export class RecareApiClient {
     suggested_actions: string[];
     suggested_task?: string;
   }> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -61,7 +97,8 @@ export class RecareApiClient {
     mode: InteractionMode,
     pageContext?: PageContext
   ): Promise<TaskResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/tasks`, {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/tasks`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,7 +118,8 @@ export class RecareApiClient {
     actionResult: ActionResult,
     pageContext?: PageContext
   ): Promise<TaskResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/tasks/${taskId}/action-result`, {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/action-result`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -100,7 +138,8 @@ export class RecareApiClient {
     approval: ApprovalResponse,
     pageContext?: PageContext
   ): Promise<TaskResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/tasks/${taskId}/approve`, {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -115,7 +154,8 @@ export class RecareApiClient {
   }
 
   static async cancelTask(taskId: string): Promise<TaskResponse> {
-    const res = await fetch(`${API_BASE_URL}/api/v1/tasks/${taskId}/cancel`, {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/cancel`, {
       method: 'POST',
     });
     if (!res.ok) {

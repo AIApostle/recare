@@ -222,7 +222,7 @@ export default function App() {
       );
 
       if (cloudAI.toolCalls && cloudAI.toolCalls.length > 0) {
-        // Execute first tool call
+        // Execute tool call directly with real-time feedback
         const tool = cloudAI.toolCalls[0];
         if (tool.name === 'highlight_element') {
           await MessagingService.highlightElement(tool.args.element_id, undefined, tool.args.label);
@@ -231,6 +231,64 @@ export default function App() {
             cloudAI.text,
             undefined,
             ['Click it for me', 'Continue task'],
+            'in_cloud',
+            cloudAI.modelUsed
+          );
+          setTaskState('COMPLETED');
+          return;
+        } else if (tool.name === 'click_element') {
+          await MessagingService.executeBrowserAction({
+            action_id: crypto.randomUUID(),
+            type: 'CLICK',
+            target: { element_id: tool.args.element_id },
+            reason: tool.args.reason || 'Voice tool command execution',
+            requires_approval: false,
+            risk_level: 'LOW',
+          });
+          addAssistantMessage(
+            cloudAI.text || `Clicked control ${tool.args.element_id}.`,
+            cloudAI.text || `I clicked the control for you.`,
+            undefined,
+            ['What next?', 'Read page content'],
+            'in_cloud',
+            cloudAI.modelUsed
+          );
+          setTaskState('COMPLETED');
+          return;
+        } else if (tool.name === 'fill_input') {
+          await MessagingService.executeBrowserAction({
+            action_id: crypto.randomUUID(),
+            type: 'FILL',
+            target: { element_id: tool.args.element_id },
+            value: tool.args.value || '',
+            reason: tool.args.reason || 'Voice form filling tool',
+            requires_approval: false,
+            risk_level: 'LOW',
+          });
+          addAssistantMessage(
+            cloudAI.text || `Filled ${tool.args.element_id} with "${tool.args.value}".`,
+            cloudAI.text || `I entered ${tool.args.value} for you.`,
+            undefined,
+            ['Submit form', 'Clear input'],
+            'in_cloud',
+            cloudAI.modelUsed
+          );
+          setTaskState('COMPLETED');
+          return;
+        } else if (tool.name === 'scroll_page') {
+          await MessagingService.executeBrowserAction({
+            action_id: crypto.randomUUID(),
+            type: 'SCROLL',
+            options: { delta_y: tool.args.delta_y || 400 },
+            reason: 'Voice scroll command',
+            requires_approval: false,
+            risk_level: 'LOW',
+          });
+          addAssistantMessage(
+            cloudAI.text || `Scrolled the page.`,
+            cloudAI.text || `I scrolled the page for you.`,
+            undefined,
+            ['Scroll more', 'Read top elements'],
             'in_cloud',
             cloudAI.modelUsed
           );
