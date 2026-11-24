@@ -1,113 +1,55 @@
 import React from 'react';
-import { Eye, Settings, History, Wifi, WifiOff, Cpu, Cloud, RefreshCw } from 'lucide-react';
+import { Eye, Settings, History } from 'lucide-react';
 import { CurrentInferencePath } from '../services/firebase-ai/firebaseAiService';
 
 interface HeaderProps {
   currentDomain?: string;
-  isBackendConnected: boolean;
+  isBackendConnected?: boolean;
   inferencePath?: CurrentInferencePath;
   onOpenSettings: () => void;
   onOpenHistory?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  currentDomain,
-  isBackendConnected,
-  inferencePath = 'idle',
   onOpenSettings,
   onOpenHistory,
 }) => {
-  const renderInferenceBadge = () => {
-    switch (inferencePath) {
-      case 'on_device':
-        return (
-          <span className="flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm" title="Processed on-device via Gemini Nano 4">
-            <Cpu className="w-3 h-3 text-emerald-600" />
-            <span>On-device</span>
-          </span>
-        );
-      case 'in_cloud':
-        return (
-          <span className="flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300 shadow-sm" title="Processed in-cloud via Firebase AI Logic">
-            <Cloud className="w-3 h-3 text-blue-600" />
-            <span>Cloud</span>
-          </span>
-        );
-      case 'downloading_model':
-        return (
-          <span className="flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-            <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
-            <span>Downloading Nano</span>
-          </span>
-        );
-      case 'fallback_to_cloud':
-        return (
-          <span className="flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-300">
-            <RefreshCw className="w-3 h-3 text-purple-600" />
-            <span>Cloud Fallback</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="flex items-center space-x-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200" title="Hybrid inference ready (Firebase AI Logic)">
-            <Cpu className="w-3 h-3 text-gray-500" />
-            <span>Hybrid AI</span>
-          </span>
-        );
-    }
-  };
-
   return (
-    <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-20">
-      <div className="flex items-center space-x-2">
-        <div className="w-8 h-8 rounded-lg bg-recare-600 flex items-center justify-center text-white font-bold shadow-sm">
-          <Eye className="w-5 h-5 text-white" aria-hidden="true" />
+    <header className="flex items-center justify-between px-4 py-3 bg-white/95 backdrop-blur-md border-b border-zinc-200/80 sticky top-0 z-20">
+      {/* Brand & Logo */}
+      <div className="flex items-center space-x-2.5">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-[0_1px_2px_rgba(0,0,0,0.1),0_0_0_1px_rgba(16,185,129,0.3)]">
+          <Eye className="w-4 h-4 text-white" aria-hidden="true" />
         </div>
         <div>
-          <div className="flex items-center space-x-1.5">
-            <h1 className="font-bold text-gray-900 text-base tracking-tight">Recare</h1>
-            <span className="text-[10px] bg-recare-100 text-recare-800 font-semibold px-1.5 py-0.5 rounded">
-              Hybrid
-            </span>
-          </div>
-          <p className="text-xs text-gray-500 truncate max-w-[140px]" title={currentDomain || 'Ready'}>
-            {currentDomain ? `On: ${currentDomain}` : 'Detecting tab...'}
-          </p>
+          <h1 className="font-semibold text-zinc-950 text-[15px] tracking-tight leading-none">
+            Recare
+          </h1>
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
-        {renderInferenceBadge()}
-
-        <span
-          className="flex items-center text-xs text-gray-500"
-          title={isBackendConnected ? 'Backend Connected' : 'Backend Disconnected (localhost:8000)'}
-        >
-          {isBackendConnected ? (
-            <Wifi className="w-4 h-4 text-recare-600" aria-label="Backend Connected" />
-          ) : (
-            <WifiOff className="w-4 h-4 text-red-500" aria-label="Backend Disconnected" />
-          )}
-        </span>
-
-        <button
-          type="button"
-          onClick={onOpenHistory}
-          className="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
-          aria-label="View task history"
-          title="Task History"
-        >
-          <History className="w-5 h-5" />
-        </button>
+      {/* Clean Utility Actions */}
+      <div className="flex items-center space-x-1">
+        {onOpenHistory && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="p-2 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/80 active:scale-95 transition-all"
+            aria-label="View task history"
+            title="Task History"
+          >
+            <History className="w-4 h-4" />
+          </button>
+        )}
 
         <button
           type="button"
           onClick={onOpenSettings}
-          className="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-xl text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/80 active:scale-95 transition-all"
           aria-label="Open accessibility settings"
-          title="Preferences & Hybrid AI"
+          title="Accessibility & Settings"
         >
-          <Settings className="w-5 h-5" />
+          <Settings className="w-4 h-4" />
         </button>
       </div>
     </header>

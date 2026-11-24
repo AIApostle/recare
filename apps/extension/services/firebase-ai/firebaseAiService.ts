@@ -145,13 +145,14 @@ export class FirebaseAiService {
   }
 
   /**
-   * On-device page explanation using Gemini Nano 4 via Firebase AI Logic.
-   * Single-turn, private, zero-latency local execution.
+   * Hybrid page explanation.
+   * Default strategy: Tries Cloud first for rich reasoning; if offline or unavailable,
+   * seamlessly falls back to on-device Gemini Nano 4, then to grounded DOM heuristics.
    */
   static async explainPageLocally(
     pageContext: PageContext,
     simplified: boolean = false,
-    selectedMode: SelectedInferenceMode = 'PREFER_ON_DEVICE'
+    selectedMode: SelectedInferenceMode = 'PREFER_IN_CLOUD'
   ): Promise<AIExecutionResult> {
     await this.initialize();
 
@@ -164,7 +165,7 @@ export class FirebaseAiService {
       .join('\n');
 
     const prompt = simplified
-      ? `You are Recare, an accessibility assistant running on-device with Gemini Nano 4.
+      ? `You are Recare, an accessibility assistant.
 Explain this webpage in very simple, calm, plain language without jargon:
 Page: ${title} (${domain})
 Headings: ${headings}
@@ -180,12 +181,12 @@ Interactive Controls:
 ${elements}
 Summarize the page purpose, main interactive controls, and recommended next action for the user.`;
 
-    let modeEnum: InferenceMode = InferenceMode.PREFER_ON_DEVICE;
+    let modeEnum: InferenceMode = InferenceMode.PREFER_IN_CLOUD;
     if (selectedMode === 'ONLY_ON_DEVICE') modeEnum = InferenceMode.ONLY_ON_DEVICE;
-    else if (selectedMode === 'PREFER_IN_CLOUD') modeEnum = InferenceMode.PREFER_IN_CLOUD;
+    else if (selectedMode === 'PREFER_ON_DEVICE') modeEnum = InferenceMode.PREFER_ON_DEVICE;
     else if (selectedMode === 'ONLY_IN_CLOUD') modeEnum = InferenceMode.ONLY_IN_CLOUD;
 
-    this.activeInferencePath = 'on_device';
+    this.activeInferencePath = 'in_cloud';
 
     try {
       const model = getGenerativeModel(this.ai, {
@@ -209,24 +210,23 @@ Summarize the page purpose, main interactive controls, and recommended next acti
         modelUsed: source === 'on_device' ? 'Gemini Nano 4 (On-Device)' : 'Gemini 2.5 Flash Lite (Cloud)',
       };
     } catch (err: any) {
-      console.warn('[Recare] Local inference failed or unavailable, falling back to cloud:', err);
-      this.activeInferencePath = 'fallback_to_cloud';
+      console.warn('[Recare] Cloud inference unavailable, falling back to local on-device:', err);
+      this.activeInferencePath = 'on_device';
 
-      // Fallback to Cloud Model
+      // Fallback 1: Try On-Device Gemini Nano 4
       try {
-        const cloudModel = getGenerativeModel(this.ai, {
-          mode: InferenceMode.ONLY_IN_CLOUD,
+        const localModel = getGenerativeModel(this.ai, {
+          mode: InferenceMode.ONLY_ON_DEVICE,
         });
-        const fallbackRes = await cloudModel.generateContent(prompt);
-        this.activeInferencePath = 'in_cloud';
+        const localRes = await localModel.generateContent(prompt);
         return {
-          text: fallbackRes.response.text(),
-          inferenceSource: 'in_cloud',
-          modelUsed: 'Gemini 2.5 Flash Lite (Cloud Fallback)',
+          text: localRes.response.text(),
+          inferenceSource: 'on_device',
+          modelUsed: 'Gemini Nano 4 (On-Device Fallback)',
         };
-      } catch (cloudErr: any) {
+      } catch (localErr: any) {
         this.activeInferencePath = 'idle';
-        // Provide grounded graceful response if offline
+        // Fallback 2: Grounded graceful response if completely offline
         return {
           text: `You are on **${title}** (${domain}). Key sections include ${headings || 'general content'}. You have ${pageContext.interactive_elements.length} interactive elements available.`,
           inferenceSource: 'on_device',

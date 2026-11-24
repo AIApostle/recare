@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlanStep, TaskState } from '../types';
-import { Bot, User, CheckCircle2, Clock, Volume2 } from 'lucide-react';
+import { Bot, Volume2, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 export interface ChatMessageItem {
@@ -34,18 +34,34 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
       aria-label="Conversation and task history"
       className="flex-1 overflow-y-auto p-4 space-y-4"
     >
+      {/* Empty State Onboarding */}
       {messages.length === 0 && (
-        <div className="text-center py-8 text-gray-500 space-y-2">
-          <div className="w-12 h-12 mx-auto rounded-full bg-recare-50 text-recare-600 flex items-center justify-center">
+        <div className="text-center py-10 px-2 space-y-3">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-700 flex items-center justify-center border border-emerald-100 shadow-xs">
             <Bot className="w-6 h-6" />
           </div>
-          <h2 className="text-sm font-semibold text-gray-800">How can Recare assist you?</h2>
-          <p className="text-xs text-gray-500 max-w-xs mx-auto">
-            Ask about this page, have me explain controls, or request multi-step actions using text or voice.
-          </p>
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-zinc-900 tracking-tight">How can Recare help you?</h2>
+            <p className="text-xs text-zinc-500 max-w-xs mx-auto leading-relaxed">
+              Ask questions about this page, request interface explanations, or state a task you want accomplished.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-wrap justify-center gap-1.5 max-w-xs mx-auto">
+            {['Explain this page', 'Where is the submit button?', 'Help me complete this form'].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => onSuggestedAction(prompt)}
+                className="text-[11px] font-medium px-2.5 py-1.5 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 rounded-xl border border-zinc-200/80 transition-colors"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
+      {/* Messages */}
       {messages.map((msg) => (
         <div
           key={msg.id}
@@ -54,88 +70,90 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
           }`}
         >
           {msg.sender === 'assistant' && (
-            <div className="w-7 h-7 rounded-lg bg-recare-100 text-recare-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center flex-shrink-0 mt-0.5 border border-emerald-100">
               <Bot className="w-4 h-4" />
             </div>
           )}
 
           <div
-            className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed shadow-sm ${
+            className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs sm:text-sm leading-relaxed ${
               msg.sender === 'user'
-                ? 'bg-recare-600 text-white rounded-tr-none'
-                : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none'
+                ? 'bg-zinc-950 text-white rounded-tr-xs shadow-xs'
+                : 'bg-white border border-zinc-200/80 text-zinc-800 rounded-tl-xs shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
             }`}
           >
-            <div className="flex items-center justify-between space-x-2 mb-1">
-              <div className="flex items-center space-x-1.5">
-                <span className="text-[10px] font-semibold opacity-75">
-                  {msg.sender === 'user' ? 'You' : 'Recare'}
-                </span>
-                {msg.inferenceSource && (
-                  <span
-                    className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
-                      msg.inferenceSource === 'on_device'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}
-                    title={msg.modelUsed || msg.inferenceSource}
-                  >
-                    {msg.inferenceSource === 'on_device' ? '⚡ On-device (Nano 4)' : '☁️ Cloud'}
-                  </span>
-                )}
-              </div>
+            {/* Message Header */}
+            <div className="flex items-center justify-between space-x-2 mb-1.5">
+              <span className="text-[10px] font-semibold opacity-60 uppercase tracking-wider">
+                {msg.sender === 'user' ? 'You' : 'Recare'}
+              </span>
+
               {msg.sender === 'assistant' && (
                 <button
                   type="button"
                   onClick={() => VoiceService.speak(msg.spokenText || msg.text, speechRate)}
-                  className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
+                  className="p-1 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors"
                   aria-label="Read response aloud"
-                  title="Listen"
+                  title="Listen aloud"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            <div className="whitespace-pre-line">{msg.text}</div>
+            {/* Message Body */}
+            <div className="whitespace-pre-line text-zinc-800 dark:text-zinc-100 font-normal">
+              {msg.text}
+            </div>
 
-            {/* Task Structured Plan */}
+            {/* Step-by-Step Execution Plan */}
             {msg.plan && msg.plan.length > 0 && (
-              <div className="mt-3 pt-2.5 border-t border-gray-100 space-y-1.5">
-                <div className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
-                  Task Plan:
+              <div className="mt-3 pt-2.5 border-t border-zinc-100 space-y-2">
+                <div className="text-[11px] font-semibold text-zinc-900 tracking-tight">
+                  Execution Plan:
                 </div>
-                {msg.plan.map((step) => (
-                  <div
-                    key={step.step_number}
-                    className="flex items-center space-x-2 text-xs py-1 px-1.5 rounded bg-gray-50"
-                  >
-                    {step.status === 'COMPLETED' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-recare-600 flex-shrink-0" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                    )}
-                    <span
-                      className={`truncate ${
-                        step.status === 'COMPLETED' ? 'line-through text-gray-400' : 'text-gray-700'
+                <div className="space-y-1.5">
+                  {msg.plan.map((step) => (
+                    <div
+                      key={step.step_number}
+                      className={`flex items-start space-x-2 p-2 rounded-xl text-xs transition-colors ${
+                        step.status === 'COMPLETED'
+                          ? 'bg-emerald-50 text-emerald-900'
+                          : step.status === 'IN_PROGRESS'
+                          ? 'bg-zinc-100 text-zinc-900 font-medium border border-zinc-200/70'
+                          : 'bg-zinc-50/70 text-zinc-600'
                       }`}
                     >
-                      {step.step_number}. {step.description}
-                    </span>
-                  </div>
-                ))}
+                      {step.status === 'COMPLETED' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      ) : step.status === 'IN_PROGRESS' ? (
+                        <div className="w-3.5 h-3.5 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1">
+                        <span>{step.description}</span>
+                        {step.risk_level === 'HIGH' && (
+                          <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 uppercase">
+                            Approval Required
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
-            {/* Suggested Quick Action Pills */}
+            {/* Suggested Follow-up Actions */}
             {msg.suggestedActions && msg.suggestedActions.length > 0 && (
-              <div className="mt-3 pt-2 border-t border-gray-100 flex flex-wrap gap-1.5">
-                {msg.suggestedActions.map((action, idx) => (
+              <div className="mt-2.5 pt-2 flex flex-wrap gap-1 border-t border-zinc-100">
+                {msg.suggestedActions.map((action, i) => (
                   <button
-                    key={idx}
+                    key={i}
                     type="button"
                     onClick={() => onSuggestedAction(action)}
-                    className="text-[11px] py-1 px-2 bg-gray-100 hover:bg-recare-50 hover:text-recare-800 text-gray-700 rounded-lg transition-colors border border-gray-200"
+                    className="text-[11px] font-medium px-2 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg transition-colors"
                   >
                     {action}
                   </button>
@@ -143,12 +161,6 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
               </div>
             )}
           </div>
-
-          {msg.sender === 'user' && (
-            <div className="w-7 h-7 rounded-lg bg-gray-200 text-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <User className="w-4 h-4" />
-            </div>
-          )}
         </div>
       ))}
     </div>

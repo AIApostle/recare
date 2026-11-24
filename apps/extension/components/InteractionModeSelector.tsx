@@ -38,11 +38,11 @@ export const InteractionModeSelector: React.FC<InteractionModeSelectorProps> = (
   ];
 
   return (
-    <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+    <div className="px-4 py-2 bg-white/60 backdrop-blur-xs border-b border-zinc-100">
       <div
         role="radiogroup"
         aria-label="Agent Interaction Mode"
-        className="grid grid-cols-3 gap-1 bg-gray-200 p-1 rounded-lg"
+        className="grid grid-cols-3 gap-1 bg-zinc-100/80 p-1 rounded-2xl border border-zinc-200/40"
       >
         {modes.map((m) => {
           const isSelected = currentMode === m.id;
@@ -53,14 +53,14 @@ export const InteractionModeSelector: React.FC<InteractionModeSelectorProps> = (
               role="radio"
               aria-checked={isSelected}
               onClick={() => onModeChange(m.id)}
-              className={`flex items-center justify-center space-x-1 py-1.5 px-2 rounded-md text-xs font-medium transition-all ${
+              className={`flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded-xl text-xs transition-all ${
                 isSelected
-                  ? 'bg-white text-gray-900 shadow-sm font-semibold'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-white text-zinc-950 shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] font-semibold'
+                  : 'text-zinc-500 hover:text-zinc-900 font-medium'
               }`}
               title={m.description}
             >
-              <span className={isSelected ? 'text-recare-600' : 'text-gray-400'}>{m.icon}</span>
+              <span className={isSelected ? 'text-emerald-600' : 'text-zinc-400'}>{m.icon}</span>
               <span>{m.label}</span>
             </button>
           );

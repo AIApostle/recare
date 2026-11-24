@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Send, Mic, MicOff } from 'lucide-react';
+import { ArrowUp, Mic, MicOff } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 interface ComposerProps {
@@ -40,7 +40,6 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, disabled }) =
         if (isFinal) {
           setIsRecording(false);
           setVoiceNotice(null);
-          // Automatically send voice query on completion
           setTimeout(() => {
             if (transcript.trim()) {
               onSendMessage(transcript.trim());
@@ -66,56 +65,60 @@ export const Composer: React.FC<ComposerProps> = ({ onSendMessage, disabled }) =
   };
 
   return (
-    <div className="p-3 bg-white border-t border-gray-200">
+    <div className="p-3 bg-white border-t border-zinc-100">
       {voiceNotice && (
-        <div className="mb-2 text-xs py-1 px-2.5 rounded bg-amber-100 text-amber-900 flex items-center justify-between">
+        <div className="mb-2 text-xs py-1.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between animate-in fade-in">
           <span>{voiceNotice}</span>
           <button
             type="button"
             onClick={() => setVoiceNotice(null)}
-            className="text-amber-700 font-bold ml-2"
+            className="text-amber-700 font-bold ml-2 hover:opacity-75"
           >
             ×
           </button>
         </div>
       )}
 
-      <div className="flex items-center space-x-1.5">
+      {/* Double-bezel input pill */}
+      <div className="bg-zinc-50 border border-zinc-200/80 rounded-2xl p-1.5 flex items-center gap-1.5 focus-within:border-emerald-500/60 focus-within:bg-white focus-within:ring-3 focus-within:ring-emerald-500/10 transition-all shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
+        {/* Voice Trigger */}
         <button
           type="button"
           onClick={toggleVoice}
           className={`p-2 rounded-xl transition-all ${
             isRecording
               ? 'bg-red-500 text-white animate-pulse shadow-md ring-2 ring-red-400'
-              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100'
           }`}
           aria-label={isRecording ? 'Stop voice recording' : 'Start voice input'}
           title={isRecording ? 'Stop listening' : 'Speak to Recare'}
         >
-          {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
         </button>
 
-        <div className="relative flex-1">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={disabled}
-            placeholder={isRecording ? 'Listening to voice...' : 'Ask Recare or describe a task...'}
-            className="w-full py-2 pl-3 pr-9 text-xs sm:text-sm bg-gray-50 border border-gray-300 rounded-xl focus:bg-white focus:border-recare-600 transition-colors"
-            aria-label="Message Recare assistant"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!input.trim() || disabled}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 text-recare-600 hover:text-recare-700 disabled:text-gray-300 transition-colors"
-            aria-label="Send message"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
+        {/* Input Field */}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          placeholder="Ask a question or request an action..."
+          className="flex-1 bg-transparent text-xs sm:text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none px-1"
+          aria-label="Message Recare assistant"
+        />
+
+        {/* Send Action */}
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!input.trim() || disabled}
+          className="w-8 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white flex items-center justify-center transition-all disabled:opacity-30 disabled:pointer-events-none shadow-xs flex-shrink-0"
+          aria-label="Send message"
+          title="Send"
+        >
+          <ArrowUp className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
