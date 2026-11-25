@@ -655,11 +655,7 @@ export default function App() {
       )}
 
       {showLocalModelSetup && (
-        <LocalModelModal
-          isBackendConnected={isBackendConnected}
-          onRetryBackend={checkRenderHealth}
-          onClose={() => setShowLocalModelSetup(false)}
-        />
+        <LocalModelModal onClose={() => setShowLocalModelSetup(false)} />
       )}
 
       {showOnboarding && <OnboardingModal onFinish={handleOnboardingFinish} />}

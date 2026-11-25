@@ -8,15 +8,11 @@ import {
   Copy,
   Check,
   RefreshCw,
-  Cloud,
   Sparkles,
 } from 'lucide-react';
 import { NanoDetector, NanoAvailability } from '../services/firebase-ai/nanoDetector';
-import { getApiBaseUrl } from '../services/api';
 
 interface LocalModelModalProps {
-  isBackendConnected: boolean;
-  onRetryBackend: () => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -29,50 +25,43 @@ interface SetupStep {
 const CHROME_NANO_STEPS: SetupStep[] = [
   {
     title: '1. Enable Chrome Prompt API',
-    detail: 'Paste this flag URL in Chrome, set it to Enabled:',
+    detail:
+      'Open this flag URL (or search "#prompt-api" in chrome://flags) and set it to Enabled, then relaunch Chrome:',
     copyText: 'chrome://flags/#prompt-api-for-gemini-nano',
   },
   {
-    title: '2. Enable On-Device Model Optimization',
-    detail: 'Set this flag to "Enabled BypassPerfRequirement" (important!):',
-    copyText: 'chrome://flags/#optimization-guide-on-device-model',
-  },
-  {
-    title: '3. Relaunch Chrome',
-    detail: 'Click the blue Relaunch button at the bottom of Chrome after setting both flags.',
-  },
-  {
-    title: '4. Download Model Weights (~1.5–2.5 GB)',
+    title: '2. Check On-Device Model Support & Hardware',
     detail:
-      'Click "Download Local Model" above, or open chrome://components, find "Optimization Guide On Device Model" (not Manifest), and click "Check for update".',
+      'In newer Chrome versions, "#optimization-guide-on-device-model" moved into Chrome AI internals. Open this diagnostics page to see if your GPU/Vulkan & disk space (22 GB free) are eligible:',
+    copyText: 'chrome://on-device-internals',
+  },
+  {
+    title: '3. Verify Chrome AI Settings & Components',
+    detail:
+      'Check Chrome AI settings or open chrome://components to see if "Optimization Guide On Device Model" (beyond just the Manifest) is downloaded:',
     copyText: 'chrome://components',
+  },
+  {
+    title: '4. Click "Download Local Model" Above',
+    detail:
+      'Once Chrome provisions the execution config for your device, Firebase AI automatically falls back to Gemini Nano locally whenever cloud is unavailable.',
   },
 ];
 
-export const LocalModelModal: React.FC<LocalModelModalProps> = ({
-  isBackendConnected,
-  onRetryBackend,
-  onClose,
-}) => {
+export const LocalModelModal: React.FC<LocalModelModalProps> = ({ onClose }) => {
   const [nanoStatus, setNanoStatus] = useState<NanoAvailability | null>(null);
-  const [apiUrl, setApiUrl] = useState<string>('https://recare.onrender.com');
   const [checking, setChecking] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<number>(0);
   const [testing, setTesting] = useState(false);
   const [testOutput, setTestOutput] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [checkingBackend, setCheckingBackend] = useState(false);
 
   const refreshStatus = async () => {
     setChecking(true);
     try {
-      const [status, url] = await Promise.all([
-        NanoDetector.checkAvailability(),
-        getApiBaseUrl(),
-      ]);
+      const status = await NanoDetector.checkAvailability();
       setNanoStatus(status);
-      setApiUrl(url);
     } finally {
       setChecking(false);
     }
@@ -122,15 +111,6 @@ export const LocalModelModal: React.FC<LocalModelModalProps> = ({
     }
   };
 
-  const handleRetryBackend = async () => {
-    setCheckingBackend(true);
-    try {
-      await onRetryBackend();
-    } finally {
-      setCheckingBackend(false);
-    }
-  };
-
   return (
     <div
       role="dialog"
@@ -149,7 +129,7 @@ export const LocalModelModal: React.FC<LocalModelModalProps> = ({
               <Cpu className="w-4 h-4" />
             </div>
             <h2 id="local-model-title" className="font-semibold text-base text-zinc-950 tracking-tight">
-              Cloud & Local AI (Gemini Nano)
+              Local AI Model (Gemini Nano)
             </h2>
           </div>
           <button
@@ -162,45 +142,12 @@ export const LocalModelModal: React.FC<LocalModelModalProps> = ({
           </button>
         </div>
 
-        {/* Cloud (Render) Status Card */}
-        <div className="p-3 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Cloud className="w-4 h-4 text-sky-600" />
-              <span className="text-xs font-semibold text-zinc-900">Primary Cloud Backend</span>
-            </div>
-            <span
-              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                isBackendConnected
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-amber-100 text-amber-800'
-              }`}
-            >
-              {isBackendConnected ? 'Connected' : 'Unreachable / Waking'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-500">
-            <code className="truncate bg-white px-2 py-0.5 rounded border border-zinc-200 text-zinc-700">
-              {apiUrl}
-            </code>
-            <button
-              type="button"
-              onClick={handleRetryBackend}
-              disabled={checkingBackend}
-              className="flex items-center space-x-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg cursor-pointer flex-shrink-0"
-            >
-              <RefreshCw className={`w-3 h-3 ${checkingBackend ? 'animate-spin' : ''}`} />
-              <span>{checkingBackend ? 'Checking...' : 'Check Health'}</span>
-            </button>
-          </div>
-        </div>
-
         {/* Local Gemini Nano Status & Download Trigger */}
         <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200/80 space-y-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Sparkles className="w-4 h-4 text-emerald-700" />
-              <span className="text-xs font-semibold text-zinc-900">On-Device Fallback (Gemini Nano)</span>
+              <span className="text-xs font-semibold text-zinc-900">On-Device Fallback (Firebase Hybrid AI)</span>
             </div>
             <button
               type="button"

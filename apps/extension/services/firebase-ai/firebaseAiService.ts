@@ -117,7 +117,6 @@ export class FirebaseAiService {
   private static app: FirebaseApp | null = null;
   private static ai: any = null;
   private static activeInferencePath: CurrentInferencePath = 'idle';
-  private static appCheckBlocked: boolean = false;
 
   /** Initialize Firebase App, App Check, and Firebase AI Logic */
   static async initialize(): Promise<boolean> {
@@ -147,9 +146,10 @@ export class FirebaseAiService {
   }
 
   /**
-   * Hybrid page & conversational assistant.
-   * - Respects selectedMode (`PREFER_ON_DEVICE` tries Gemini Nano first, `PREFER_IN_CLOUD` calls Render first).
-   * - If Render backend fails/offline, seamlessly falls back to on-device Gemini Nano, then grounded DOM analysis.
+   * Hybrid page & conversational assistant powered by Firebase AI Logic (`firebase/ai`).
+   * Uses Firebase AI's native `InferenceMode` (`PREFER_IN_CLOUD` / `PREFER_ON_DEVICE`)
+   * so if the cloud model is unavailable, Firebase automatically falls back to Chrome's
+   * on-device Gemini Nano model; if both are unavailable, backs up cleanly via Render & DOM heuristics.
    */
   static async explainPageLocally(
     pageContext: PageContext,
@@ -168,38 +168,76 @@ export class FirebaseAiService {
       .map((e) => `[${e.element_id}] <${e.tag}> "${e.accessible_name || e.text || 'unnamed'}"`)
       .join('\n');
 
+    const historyBlock = conversationHistory.length > 0
+      ? `\nRecent conversation:\n${conversationHistory
+          .slice(-6)
+          .map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${m.content}`)
+          .join('\n')}\n`
+      : '';
+
     const localSystemPrompt = simplified
       ? `You are Recare, an accessibility browser assistant. Explain in very simple, calm, plain language without jargon.`
       : `You are Recare, an AI accessibility browser assistant. Answer clearly, accurately, and concisely grounded in the webpage details.`;
 
-    const localPrompt = userMessage?.trim()
-      ? `Webpage: ${title} (${domain})\nSections: ${headings || 'None'}\nInteractive Controls:\n${elements}\n\nUser question: ${userMessage.trim()}`
-      : `Summarize the purpose of "${title}" (${domain}), its sections (${headings}), and main interactive controls:\n${elements}`;
+    const promptBody = userMessage?.trim()
+      ? `${localSystemPrompt}\n\nWebpage: ${title} (${domain})\nSections: ${headings || 'None'}\nInteractive Controls:\n${elements}${historyBlock}\nUser: ${userMessage.trim()}`
+      : `${localSystemPrompt}\n\nSummarize "${title}" (${domain}), sections (${headings}), and main interactive controls:\n${elements}`;
 
-    const chatMessage = userMessage?.trim() || localPrompt;
+    const chatMessage = userMessage?.trim() || promptBody;
 
-    const tryLocalNano = async (): Promise<AIExecutionResult | null> => {
+    const modeMap: Record<SelectedInferenceMode, InferenceMode> = {
+      PREFER_IN_CLOUD: InferenceMode.PREFER_IN_CLOUD,
+      PREFER_ON_DEVICE: InferenceMode.PREFER_ON_DEVICE,
+      ONLY_IN_CLOUD: InferenceMode.ONLY_IN_CLOUD,
+      ONLY_ON_DEVICE: InferenceMode.ONLY_ON_DEVICE,
+    };
+    const modeEnum = modeMap[selectedMode] || InferenceMode.PREFER_IN_CLOUD;
+    this.activeInferencePath =
+      selectedMode === 'ONLY_ON_DEVICE' || selectedMode === 'PREFER_ON_DEVICE'
+        ? 'on_device'
+        : 'in_cloud';
+
+    // 1. Primary path: Firebase AI Logic with native hybrid fallback to on-device Gemini Nano
+    if (this.ai) {
       try {
-        const nanoStatus = await NanoDetector.checkAvailability();
-        if (!nanoStatus.available || nanoStatus.status !== 'ready') {
-          return null;
-        }
-        const localText = await NanoDetector.runLocalPrompt(localPrompt, localSystemPrompt);
-        if (localText) {
-          this.activeInferencePath = 'on_device';
+        const model = getGenerativeModel(this.ai, {
+          mode: modeEnum,
+          inCloudParams: { model: 'gemini-3.5-flash-lite' },
+          onDeviceParams: {
+            createOptions: {
+              expectedInputs: [{ type: 'text', languages: ['en'] }],
+              expectedOutputs: [{ type: 'text', languages: ['en'] }],
+            },
+          },
+        });
+
+        const result = await model.generateContent(promptBody);
+        const text = result.response.text()?.trim();
+        if (text) {
+          const source =
+            (result as any).inferenceSource === InferenceSource.ON_DEVICE
+              ? 'on_device'
+              : 'in_cloud';
+          this.activeInferencePath = source;
           return {
-            text: localText,
-            inferenceSource: 'on_device',
-            modelUsed: 'Gemini Nano (On-Device)',
+            text,
+            inferenceSource: source,
+            modelUsed:
+              source === 'on_device'
+                ? 'Gemini Nano (Firebase On-Device Fallback)'
+                : 'Gemini 3.5 Flash Lite (Firebase AI)',
           };
         }
-      } catch (nanoErr: any) {
-        console.info('[Recare] On-device Nano fallback note:', nanoErr?.message || nanoErr);
+      } catch (firebaseErr: any) {
+        console.info(
+          '[Recare] Firebase hybrid inference note (trying Render / local fallback):',
+          firebaseErr?.message || firebaseErr
+        );
       }
-      return null;
-    };
+    }
 
-    const tryRenderBackend = async (): Promise<AIExecutionResult | null> => {
+    // 2. Fallback to Render Cloud Agent when Firebase AI client call isn't active/reachable
+    if (selectedMode !== 'ONLY_ON_DEVICE') {
       try {
         const backendRes = await RecareApiClient.sendChat(
           chatMessage,
@@ -217,33 +255,31 @@ export class FirebaseAiService {
           };
         }
       } catch (backendErr: any) {
-        console.info('[Recare] Render backend unreachable, triggering local fallback:', backendErr?.message || backendErr);
-      }
-      return null;
-    };
-
-    const preferLocal = selectedMode === 'PREFER_ON_DEVICE' || selectedMode === 'ONLY_ON_DEVICE';
-
-    if (preferLocal) {
-      const localRes = await tryLocalNano();
-      if (localRes) return localRes;
-
-      if (selectedMode !== 'ONLY_ON_DEVICE') {
-        const cloudRes = await tryRenderBackend();
-        if (cloudRes) return cloudRes;
-      }
-    } else {
-      // Cloud-first (Render), automatically falling back to Local Gemini Nano if Render fails/offline
-      const cloudRes = await tryRenderBackend();
-      if (cloudRes) return cloudRes;
-
-      if (selectedMode !== 'ONLY_IN_CLOUD') {
-        const localRes = await tryLocalNano();
-        if (localRes) return localRes;
+        console.info('[Recare] Render backend fallback note:', backendErr?.message || backendErr);
       }
     }
 
-    // Final grounded fallback from live DOM context (guarantees zero dead ends offline)
+    // 3. Direct On-Device Nano fallback (supports legacy window.ai as well as LanguageModel)
+    if (selectedMode !== 'ONLY_IN_CLOUD') {
+      try {
+        const nanoStatus = await NanoDetector.checkAvailability();
+        if (nanoStatus.available && nanoStatus.status === 'ready') {
+          const localText = await NanoDetector.runLocalPrompt(promptBody, localSystemPrompt);
+          if (localText) {
+            this.activeInferencePath = 'on_device';
+            return {
+              text: localText,
+              inferenceSource: 'on_device',
+              modelUsed: 'Gemini Nano (On-Device)',
+            };
+          }
+        }
+      } catch (nanoErr: any) {
+        console.info('[Recare] Direct on-device Nano fallback note:', nanoErr?.message || nanoErr);
+      }
+    }
+
+    // 4. Final grounded fallback from live DOM context
     this.activeInferencePath = 'idle';
     const keyControls = pageContext.interactive_elements
       .slice(0, 5)
@@ -280,18 +316,19 @@ export class FirebaseAiService {
     await this.initialize();
     this.activeInferencePath = 'in_cloud';
 
-    if (this.appCheckBlocked) {
-      return {
-        text: `Routing task for: "${userMessage}".`,
-        inferenceSource: 'in_cloud',
-        modelUsed: 'Recare Cloud Agent',
-      };
-    }
-
     try {
       const model = getGenerativeModel(this.ai, {
-        mode: InferenceMode.ONLY_IN_CLOUD,
-        tools: RECARE_BROWSER_TOOLS as any,
+        mode: InferenceMode.PREFER_IN_CLOUD,
+        inCloudParams: {
+          model: 'gemini-3.5-flash-lite',
+          tools: RECARE_BROWSER_TOOLS as any,
+        },
+        onDeviceParams: {
+          createOptions: {
+            expectedInputs: [{ type: 'text', languages: ['en'] }],
+            expectedOutputs: [{ type: 'text', languages: ['en'] }],
+          },
+        },
       });
 
       const elementsStr = pageContext.interactive_elements
@@ -330,13 +367,10 @@ If asking a question, reply clearly and concisely.`;
       return {
         text,
         inferenceSource: 'in_cloud',
-        modelUsed: 'Gemini 2.5 Flash Lite (Cloud Function Calling)',
+        modelUsed: 'Gemini 3.5 Flash Lite (Cloud Function Calling)',
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (err: any) {
-      if (err?.message?.includes('App Check') || err?.message?.includes('401')) {
-        this.appCheckBlocked = true;
-      }
       this.activeInferencePath = 'idle';
       return {
         text: `Routing action for: "${userMessage}".`,

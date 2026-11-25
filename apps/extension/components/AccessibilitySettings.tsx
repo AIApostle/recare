@@ -309,7 +309,7 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
                   Local AI Model (Gemini Nano)
                 </div>
                 <div className="text-[10px] text-zinc-600">
-                  Download model, check Render status & setup guide
+                  Download model & step-by-step setup guide
                 </div>
               </div>
             </div>

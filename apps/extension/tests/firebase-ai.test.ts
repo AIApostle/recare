@@ -90,7 +90,7 @@ describe('Firebase AI Logic Tool Declarations, Render Routing & Local Fallbacks'
     expect(toolNames).toContain('scroll_page');
   });
 
-  it('routes cloud requests to Render backend with user message and conversation history', async () => {
+  it('uses Firebase AI hybrid mode and falls back to Render backend if client inference is unavailable', async () => {
     const sendChatSpy = vi.spyOn(RecareApiClient, 'sendChat').mockResolvedValue({
       reply: 'Click the Export button on Billing Portal.',
       highlight_targets: [],
@@ -124,7 +124,7 @@ describe('Firebase AI Logic Tool Declarations, Render Routing & Local Fallbacks'
     expect(result.inferenceSource).toBe('in_cloud');
   });
 
-  it('falls back to local Gemini Nano automatically when Render backend fails', async () => {
+  it('falls back to local Gemini Nano automatically when Firebase Cloud and Render backend are unavailable', async () => {
     vi.spyOn(RecareApiClient, 'sendChat').mockRejectedValue(new Error('Network offline'));
 
     const destroySpy = vi.fn();

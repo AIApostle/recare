@@ -24,7 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   const statusLabel = isLocal
     ? 'Nano Local'
     : isBackendConnected
-    ? 'Render Cloud'
+    ? 'Cloud AI'
     : 'Local Fallback';
 
   return (
