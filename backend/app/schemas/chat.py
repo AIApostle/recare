@@ -26,3 +26,12 @@ class ChatResponse(BaseModel):
     highlight_targets: List[HighlightTarget] = Field(default_factory=list, description="Elements to visually highlight")
     suggested_actions: List[str] = Field(default_factory=list, description="Recommended next prompts/actions")
     suggested_task: Optional[str] = Field(None, description="Actionable task proposal if user wants execution")
+
+
+class TranscribeRequest(BaseModel):
+    audio_base64: str = Field(..., description="Base64-encoded audio clip (e.g. audio/webm)")
+    mime_type: str = Field("audio/webm", description="Audio MIME type")
+
+
+class TranscribeResponse(BaseModel):
+    transcript: str = Field("", description="Transcribed spoken text")

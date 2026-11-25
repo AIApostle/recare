@@ -22,8 +22,9 @@ export const getApiBaseUrl = async (): Promise<string> => {
     // Non-extension or test environment fallback
   }
   const envUrl = (import.meta as any).env?.VITE_RECARE_API_URL;
-  cachedApiUrl = (envUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
-  return cachedApiUrl;
+  const resolved = (envUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+  cachedApiUrl = resolved;
+  return resolved;
 };
 
 export const setApiBaseUrlOverride = async (url: string | null): Promise<void> => {
@@ -45,8 +46,16 @@ export class RecareApiClient {
   static async checkHealth(): Promise<boolean> {
     try {
       const baseUrl = await getApiBaseUrl();
-      const res = await fetch(`${baseUrl}/health`);
-      return res.ok;
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 15000) : null;
+      try {
+        const res = await fetch(`${baseUrl}/health`, {
+          signal: controller?.signal,
+        });
+        return res.ok;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     } catch {
       return false;
     }
@@ -67,7 +76,8 @@ export class RecareApiClient {
     message: string,
     pageContext?: PageContext,
     mode: InteractionMode = 'guide',
-    simplified: boolean = false
+    simplified: boolean = false,
+    conversationHistory: Array<{ role: string; content: string }> = []
   ): Promise<{
     reply: string;
     spoken_summary?: string;
@@ -84,12 +94,30 @@ export class RecareApiClient {
         page_context: pageContext,
         mode,
         simplified_language: simplified,
+        conversation_history: conversationHistory,
       }),
     });
     if (!res.ok) {
       throw new Error(`Chat error (${res.status}): ${await res.text()}`);
     }
     return res.json();
+  }
+
+  static async transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm'): Promise<string> {
+    const baseUrl = await getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/v1/chat/transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        audio_base64: audioBase64,
+        mime_type: mimeType,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Transcribe error (${res.status})`);
+    }
+    const data = await res.json();
+    return (data.transcript || '').trim();
   }
 
   static async createTask(

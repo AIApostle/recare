@@ -23,9 +23,41 @@ export const Composer: React.FC<ComposerProps> = ({
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const isLiveVoiceRef = useRef(isLiveVoice);
   isLiveVoiceRef.current = isLiveVoice;
+  const isRecordingRef = useRef(isRecording);
+  isRecordingRef.current = isRecording;
+  const sentTurnRef = useRef(false);
+  const pendingVoiceModeRef = useRef<'single' | 'live' | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceMenuRef = useRef<HTMLDivElement>(null);
   const micButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Listen for microphone grant completion from the permission helper tab
+  useEffect(() => {
+    const onRuntimeMessage = (msg: any) => {
+      if (msg?.type === 'MIC_PERMISSION_GRANTED' && pendingVoiceModeRef.current) {
+        const mode = pendingVoiceModeRef.current;
+        pendingVoiceModeRef.current = null;
+        setVoiceNotice(null);
+        if (mode === 'live') {
+          onToggleLiveVoice?.(true);
+          isLiveVoiceRef.current = true;
+          runListeningCycle(true);
+        } else {
+          onToggleLiveVoice?.(false);
+          isLiveVoiceRef.current = false;
+          runListeningCycle(false);
+        }
+      }
+    };
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener(onRuntimeMessage);
+    }
+    return () => {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+        chrome.runtime.onMessage.removeListener(onRuntimeMessage);
+      }
+    };
+  }, [onToggleLiveVoice]);
 
   // Close voice popup when clicking anywhere outside or pressing Escape
   useEffect(() => {
@@ -84,38 +116,71 @@ export const Composer: React.FC<ComposerProps> = ({
   };
 
   const stopVoice = () => {
+    pendingVoiceModeRef.current = null;
     VoiceService.stopListening();
+    VoiceService.stopSpeaking();
     setIsRecording(false);
+    isRecordingRef.current = false;
     setShowVoiceMenu(false);
-    if (onToggleLiveVoice) onToggleLiveVoice(false);
+    onToggleLiveVoice?.(false);
+    isLiveVoiceRef.current = false;
     setVoiceNotice(null);
   };
 
   const runListeningCycle = (isLive: boolean) => {
+    sentTurnRef.current = false;
     setIsRecording(true);
-    setVoiceNotice(isLive ? 'Live Voice Active — Speak naturally...' : 'Listening... Speak your command');
+    isRecordingRef.current = true;
+    setVoiceNotice(isLive ? 'Live Voice Active — Listening...' : 'Listening... Speak your command');
 
     VoiceService.startListening(
       (transcript, isFinal) => {
         setInput(transcript);
-        if (isFinal) {
+        if (isFinal && !sentTurnRef.current) {
+          const clean = transcript.trim();
+          if (!clean) return;
+          sentTurnRef.current = true;
+          VoiceService.stopListening();
           setIsRecording(false);
-          setVoiceNotice(null);
+          isRecordingRef.current = false;
+          setVoiceNotice(isLive ? 'Live Voice — Processing...' : null);
           setTimeout(() => {
-            if (transcript.trim()) {
-              onSendMessage(transcript.trim());
-              setInput('');
-            }
-          }, 350);
+            onSendMessage(clean);
+            setInput('');
+          }, 150);
         }
       },
       (error) => {
         setIsRecording(false);
+        isRecordingRef.current = false;
+        if (error === 'MIC_PERMISSION_REQUIRED') {
+          pendingVoiceModeRef.current = isLive ? 'live' : 'single';
+          VoiceService.openMicPermissionTab();
+          setVoiceNotice('Allow microphone in the new Chrome tab, then Live Voice will resume automatically.');
+          return;
+        }
+        onToggleLiveVoice?.(false);
+        isLiveVoiceRef.current = false;
         setVoiceNotice(error);
-        setTimeout(() => setVoiceNotice(null), 4000);
+        setTimeout(() => setVoiceNotice(null), 5000);
       },
-      () => {
+      (reason) => {
         setIsRecording(false);
+        isRecordingRef.current = false;
+        // If user paused silently during Live Voice without completing an utterance, keep listening
+        if (
+          isLive &&
+          isLiveVoiceRef.current &&
+          !sentTurnRef.current &&
+          (reason === 'no-speech' || reason === 'end') &&
+          !VoiceService.isSpeaking()
+        ) {
+          setTimeout(() => {
+            if (isLiveVoiceRef.current && !isRecordingRef.current && !VoiceService.isSpeaking()) {
+              runListeningCycle(true);
+            }
+          }, 250);
+        }
       }
     );
   };
@@ -128,30 +193,34 @@ export const Composer: React.FC<ComposerProps> = ({
     setShowVoiceMenu((prev) => !prev);
   };
 
-  const startSingleRecord = async () => {
+  const startVoiceMode = async (mode: 'single' | 'live') => {
     setShowVoiceMenu(false);
-    await VoiceService.requestMicrophonePermission();
-    if (onToggleLiveVoice) onToggleLiveVoice(false);
-    runListeningCycle(false);
-  };
+    const isLive = mode === 'live';
+    const perm = await VoiceService.requestMicrophonePermission();
+    if (!perm.granted) {
+      pendingVoiceModeRef.current = mode;
+      if (perm.needsTabPrompt) {
+        VoiceService.openMicPermissionTab();
+      }
+      setVoiceNotice(perm.message || 'Microphone access is required.');
+      return;
+    }
 
-  const startLiveChat = async () => {
-    setShowVoiceMenu(false);
-    await VoiceService.requestMicrophonePermission();
-    if (onToggleLiveVoice) onToggleLiveVoice(true);
-    runListeningCycle(true);
+    onToggleLiveVoice?.(isLive);
+    isLiveVoiceRef.current = isLive;
+    runListeningCycle(isLive);
   };
 
   // Register re-listen trigger for hands-free live conversation loop
   useEffect(() => {
     if (onRegisterListenTrigger) {
       onRegisterListenTrigger(() => {
-        if (isLiveVoiceRef.current && !isRecording) {
+        if (isLiveVoiceRef.current && !isRecordingRef.current && !VoiceService.isSpeaking()) {
           runListeningCycle(true);
         }
       });
     }
-  }, [onRegisterListenTrigger, isRecording]);
+  }, [onRegisterListenTrigger]);
 
   return (
     <div className="relative p-3 bg-white border-t border-zinc-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.03)]">
@@ -168,7 +237,7 @@ export const Composer: React.FC<ComposerProps> = ({
           {/* Option 1: Record & Send */}
           <button
             type="button"
-            onClick={startSingleRecord}
+            onClick={() => startVoiceMode('single')}
             className="w-full text-left p-2 rounded-lg hover:bg-emerald-50 hover:text-emerald-950 flex items-center space-x-2.5 transition-colors group cursor-pointer"
           >
             <div className="w-6 h-6 rounded-md bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
@@ -187,7 +256,7 @@ export const Composer: React.FC<ComposerProps> = ({
           {/* Option 2: Live Chat */}
           <button
             type="button"
-            onClick={startLiveChat}
+            onClick={() => startVoiceMode('live')}
             className="w-full text-left p-2 rounded-lg hover:bg-rose-50 hover:text-rose-950 flex items-center space-x-2.5 transition-colors group mt-0.5 cursor-pointer"
           >
             <div className="w-6 h-6 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
@@ -209,14 +278,16 @@ export const Composer: React.FC<ComposerProps> = ({
       {/* Live Voice Indicator Banner */}
       {isLiveVoice && (
         <div className="mb-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white flex items-center justify-between shadow-xs animate-in fade-in">
-          <div className="flex items-center space-x-2 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-            <span className="truncate">LIVE VOICE — Speak freely</span>
+          <div className="flex items-center space-x-2 text-xs font-semibold min-w-0">
+            <span className={`w-2 h-2 rounded-full bg-white flex-shrink-0 ${isRecording ? 'animate-ping' : 'opacity-70'}`} />
+            <span className="truncate">
+              {isRecording ? 'LIVE VOICE — Listening...' : 'LIVE VOICE — Processing / Speaking...'}
+            </span>
           </div>
           <button
             type="button"
             onClick={stopVoice}
-            className="text-[10px] font-medium bg-black/25 hover:bg-black/35 px-2 py-0.5 rounded-md transition-colors flex-shrink-0 ml-2"
+            className="text-[10px] font-medium bg-black/25 hover:bg-black/35 px-2 py-0.5 rounded-md transition-colors flex-shrink-0 ml-2 cursor-pointer"
           >
             End Live
           </button>
@@ -225,15 +296,27 @@ export const Composer: React.FC<ComposerProps> = ({
 
       {/* Notice Message */}
       {voiceNotice && !isLiveVoice && (
-        <div className="mb-2 text-xs py-1.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between shadow-xs animate-in fade-in">
+        <div className="mb-2 text-xs py-1.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-2 shadow-xs animate-in fade-in">
           <span className="font-medium truncate">{voiceNotice}</span>
-          <button
-            type="button"
-            onClick={() => setVoiceNotice(null)}
-            className="text-amber-700 font-bold ml-2 hover:opacity-75 text-sm"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {voiceNotice.toLowerCase().includes('microphone') && (
+              <button
+                type="button"
+                onClick={() => VoiceService.openMicPermissionTab()}
+                className="text-[10px] font-semibold bg-amber-200/80 hover:bg-amber-300 text-amber-950 px-2 py-0.5 rounded-md cursor-pointer"
+              >
+                Allow Mic
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setVoiceNotice(null)}
+              className="text-amber-700 font-bold hover:opacity-75 text-sm cursor-pointer"
+              aria-label="Dismiss voice notice"
+            >
+              ×
+            </button>
+          </div>
         </div>
       )}
 

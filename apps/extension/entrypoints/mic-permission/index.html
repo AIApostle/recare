@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recare — Enable Microphone Access</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f4f4f5;
+        color: #18181b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 20px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e4e4e7;
+        border-radius: 20px;
+        padding: 32px;
+        max-width: 440px;
+        width: 100%;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+        text-align: center;
+      }
+      .badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #ecfdf5;
+        color: #047857;
+        margin-bottom: 12px;
+      }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { font-size: 14px; color: #52525b; line-height: 1.5; margin: 0 0 20px; }
+      button {
+        background: #059669;
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover { background: #047857; }
+      .error { background: #fef2f2; color: #b91c1c; padding: 12px; border-radius: 12px; font-size: 13px; margin-top: 16px; display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge" id="status-badge">Microphone Permission Setup</div>
+      <h1 id="title">Allow Microphone Access for Recare</h1>
+      <p id="message">
+        Chrome requires microphone approval in a regular tab before Voice Chat and Live Conversation can run inside the Side Panel.
+      </p>
+      <button id="grant-btn" type="button">Enable Microphone</button>
+      <div id="error-box" class="error"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

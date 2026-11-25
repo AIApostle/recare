@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { UserPreferences } from '../types';
-import { X, Volume2, Type, Eye, Sparkles, Contrast, Activity, ShieldCheck } from 'lucide-react';
+import { X, Volume2, Type, Eye, Sparkles, Contrast, Activity, ShieldCheck, Cpu } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 interface AccessibilitySettingsProps {
   preferences: UserPreferences;
   onUpdate: (prefs: Partial<UserPreferences>) => void;
+  onOpenLocalModelSetup?: () => void;
   onClose: () => void;
 }
 
 export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
   preferences,
   onUpdate,
+  onOpenLocalModelSetup,
   onClose,
 }) => {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -289,6 +291,31 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
             />
           </label>
         </div>
+
+        {/* Local AI Model (Gemini Nano) Setup Link */}
+        {onOpenLocalModelSetup && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onOpenLocalModelSetup();
+            }}
+            className="w-full flex items-center justify-between p-3 bg-emerald-50/70 hover:bg-emerald-100/70 rounded-xl border border-emerald-200 text-left transition-colors cursor-pointer"
+          >
+            <div className="flex items-center space-x-2.5">
+              <Cpu className="w-4 h-4 text-emerald-700" />
+              <div>
+                <div className="text-xs font-semibold text-zinc-900">
+                  Local AI Model (Gemini Nano)
+                </div>
+                <div className="text-[10px] text-zinc-600">
+                  Download model, check Render status & setup guide
+                </div>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-emerald-700">Open →</span>
+          </button>
+        )}
 
         {/* Done Button */}
         <button

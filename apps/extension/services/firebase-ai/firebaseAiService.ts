@@ -147,14 +147,16 @@ export class FirebaseAiService {
   }
 
   /**
-   * Hybrid page explanation.
-   * Default strategy: Tries Cloud first for rich reasoning; if offline or unavailable,
-   * seamlessly falls back to on-device Gemini Nano 4, then to grounded DOM heuristics.
+   * Hybrid page & conversational assistant.
+   * - Respects selectedMode (`PREFER_ON_DEVICE` tries Gemini Nano first, `PREFER_IN_CLOUD` calls Render first).
+   * - If Render backend fails/offline, seamlessly falls back to on-device Gemini Nano, then grounded DOM analysis.
    */
   static async explainPageLocally(
     pageContext: PageContext,
     simplified: boolean = false,
-    selectedMode: SelectedInferenceMode = 'PREFER_IN_CLOUD'
+    selectedMode: SelectedInferenceMode = 'PREFER_IN_CLOUD',
+    userMessage?: string,
+    conversationHistory: Array<{ role: string; content: string }> = []
   ): Promise<AIExecutionResult> {
     await this.initialize();
 
@@ -162,138 +164,109 @@ export class FirebaseAiService {
     const domain = pageContext.domain || 'Active Site';
     const headings = pageContext.headings.map((h) => h.text).slice(0, 5).join(', ');
     const elements = pageContext.interactive_elements
-      .slice(0, 10)
+      .slice(0, 12)
       .map((e) => `[${e.element_id}] <${e.tag}> "${e.accessible_name || e.text || 'unnamed'}"`)
       .join('\n');
 
-    const prompt = simplified
-      ? `You are Recare, an accessibility assistant.
-Explain this webpage in very simple, calm, plain language without jargon:
-Page: ${title} (${domain})
-Headings: ${headings}
-Controls:
-${elements}
-Provide a 2-3 sentence overview of what the user can do here.`
-      : `You are Recare, an AI browser assistant running with Firebase AI Logic.
-Provide an accessible, structured explanation of this page:
-Page Title: ${title}
-Domain: ${domain}
-Key Sections: ${headings}
-Interactive Controls:
-${elements}
-Summarize the page purpose, main interactive controls, and recommended next action for the user.`;
+    const localSystemPrompt = simplified
+      ? `You are Recare, an accessibility browser assistant. Explain in very simple, calm, plain language without jargon.`
+      : `You are Recare, an AI accessibility browser assistant. Answer clearly, accurately, and concisely grounded in the webpage details.`;
 
-    const nanoStatus = await NanoDetector.checkAvailability();
+    const localPrompt = userMessage?.trim()
+      ? `Webpage: ${title} (${domain})\nSections: ${headings || 'None'}\nInteractive Controls:\n${elements}\n\nUser question: ${userMessage.trim()}`
+      : `Summarize the purpose of "${title}" (${domain}), its sections (${headings}), and main interactive controls:\n${elements}`;
 
-    // 1. If Gemini Nano is ready on-device, execute directly locally (zero network latency)
-    if (nanoStatus.available && nanoStatus.status === 'ready') {
+    const chatMessage = userMessage?.trim() || localPrompt;
+
+    const tryLocalNano = async (): Promise<AIExecutionResult | null> => {
       try {
-        const ai = (window as any)?.ai || (globalThis as any)?.ai;
-        if (ai?.languageModel?.create) {
-          const session = await ai.languageModel.create();
-          const localText = await session.prompt(prompt);
-          if (typeof session.destroy === 'function') session.destroy();
-          if (localText && localText.trim()) {
-            this.activeInferencePath = 'on_device';
-            return {
-              text: localText.trim(),
-              inferenceSource: 'on_device',
-              modelUsed: 'Gemini Nano 4 (On-Device)',
-            };
-          }
+        const nanoStatus = await NanoDetector.checkAvailability();
+        if (!nanoStatus.available || nanoStatus.status !== 'ready') {
+          return null;
+        }
+        const localText = await NanoDetector.runLocalPrompt(localPrompt, localSystemPrompt);
+        if (localText) {
+          this.activeInferencePath = 'on_device';
+          return {
+            text: localText,
+            inferenceSource: 'on_device',
+            modelUsed: 'Gemini Nano (On-Device)',
+          };
         }
       } catch (nanoErr: any) {
-        console.info('[Recare] On-device Nano execution deferred to cloud pipeline:', nanoErr?.message || nanoErr);
+        console.info('[Recare] On-device Nano fallback note:', nanoErr?.message || nanoErr);
       }
-    }
+      return null;
+    };
 
-    // 2. Otherwise try Firebase AI or Recare Backend Cloud Agent
-    this.activeInferencePath = 'in_cloud';
-
-    if (!this.appCheckBlocked) {
+    const tryRenderBackend = async (): Promise<AIExecutionResult | null> => {
       try {
-        const model = getGenerativeModel(this.ai, {
-          mode: InferenceMode.ONLY_IN_CLOUD,
-        });
-
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-
-        const source = (result as any).inferenceSource === InferenceSource.ON_DEVICE
-          ? 'on_device'
-          : 'in_cloud';
-
-        this.activeInferencePath = source;
-
-        return {
-          text,
-          inferenceSource: source,
-          modelUsed: source === 'on_device' ? 'Gemini Nano 4 (On-Device)' : 'Gemini 2.5 Flash Lite (Cloud)',
-        };
-      } catch (err: any) {
-        if (err?.message?.includes('App Check') || err?.message?.includes('401')) {
-          this.appCheckBlocked = true;
-          console.info('[Recare] Firebase App Check is enforced in console. Routing seamlessly to Recare Backend Agent.');
-        } else {
-          console.info('[Recare] Direct cloud endpoint unavailable, using Recare Cloud Agent fallback:', err?.message || err);
+        const backendRes = await RecareApiClient.sendChat(
+          chatMessage,
+          pageContext,
+          'guide',
+          simplified,
+          conversationHistory
+        );
+        if (backendRes?.reply && !backendRes.reply.includes('AI model is currently not available')) {
+          this.activeInferencePath = 'in_cloud';
+          return {
+            text: backendRes.reply,
+            inferenceSource: 'in_cloud',
+            modelUsed: 'Recare Cloud (Render)',
+          };
         }
+      } catch (backendErr: any) {
+        console.info('[Recare] Render backend unreachable, triggering local fallback:', backendErr?.message || backendErr);
+      }
+      return null;
+    };
+
+    const preferLocal = selectedMode === 'PREFER_ON_DEVICE' || selectedMode === 'ONLY_ON_DEVICE';
+
+    if (preferLocal) {
+      const localRes = await tryLocalNano();
+      if (localRes) return localRes;
+
+      if (selectedMode !== 'ONLY_ON_DEVICE') {
+        const cloudRes = await tryRenderBackend();
+        if (cloudRes) return cloudRes;
+      }
+    } else {
+      // Cloud-first (Render), automatically falling back to Local Gemini Nano if Render fails/offline
+      const cloudRes = await tryRenderBackend();
+      if (cloudRes) return cloudRes;
+
+      if (selectedMode !== 'ONLY_IN_CLOUD') {
+        const localRes = await tryLocalNano();
+        if (localRes) return localRes;
       }
     }
 
-    // Fallback 1: Query live Recare Backend Agent (cascades Gemini Flash Lite -> 3.5 Flash Lite -> 3.8 Flash)
-    try {
-      const backendRes = await RecareApiClient.sendChat(
-        prompt,
-        pageContext,
-        'guide',
-        simplified
-      );
-      this.activeInferencePath = 'in_cloud';
-      return {
-        text: backendRes.reply,
-        inferenceSource: 'in_cloud',
-        modelUsed: 'Recare Cloud Agent (Gemini Multi-Model Fallback)',
-      };
-    } catch (backendErr: any) {
-      console.info('[Recare] Backend agent fallback note:', backendErr?.message || backendErr);
-    }
-
-    // Fallback 2: Direct Chrome Built-in AI (window.ai / Prompt API)
-    if (typeof window !== 'undefined' && (window as any).ai?.languageModel) {
-      try {
-        const ai = (window as any).ai;
-        const caps = await ai.languageModel.capabilities?.();
-        if (caps?.available === 'readily' || caps?.available === 'available') {
-          const session = await ai.languageModel.create();
-          const localText = await session.prompt(prompt);
-          if (typeof session.destroy === 'function') session.destroy();
-          if (localText && localText.trim()) {
-            this.activeInferencePath = 'on_device';
-            return {
-              text: localText.trim(),
-              inferenceSource: 'on_device',
-              modelUsed: 'Gemini Nano 4 (On-Device)',
-            };
-          }
-        }
-      } catch (nanoErr: any) {
-        console.info('[Recare] Local Gemini Nano on-device fallback note:', nanoErr?.message || nanoErr);
-      }
-    }
-
-    // Fallback 3: Grounded contextual summary from live DOM context (never leaves user stranded)
+    // Final grounded fallback from live DOM context (guarantees zero dead ends offline)
     this.activeInferencePath = 'idle';
     const keyControls = pageContext.interactive_elements
-      .slice(0, 4)
+      .slice(0, 5)
       .map((e) => e.accessible_name || e.text || e.tag)
       .filter(Boolean)
       .join(', ');
 
     return {
-      text: `You are on **${pageContext.title || pageContext.domain}**. Key controls available include ${keyControls || 'links and buttons'}. What would you like to accomplish on this page?`,
+      text: `You are on **${title}** (${domain}). Key controls detected include: ${keyControls || 'links and buttons'}. What would you like help with on this page?`,
       inferenceSource: 'on_device',
-      modelUsed: 'Recare Assistant (Local Context Analysis)',
+      modelUsed: 'Recare Local Context Fallback',
     };
+  }
+
+  /**
+   * Local fallback for action requests when Render cloud backend is unavailable.
+   */
+  static async planOrAnswerWithLocalFallback(
+    userRequest: string,
+    pageContext: PageContext,
+    simplified: boolean = false
+  ): Promise<AIExecutionResult> {
+    return await this.explainPageLocally(pageContext, simplified, 'PREFER_ON_DEVICE', userRequest);
   }
 
   /**

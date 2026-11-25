@@ -6,6 +6,8 @@ import {
   BrowserAction,
   ApprovalRequest,
   UserPreferences,
+  StoredConversation,
+  ChatMessageItem,
 } from '../../types';
 import { StorageService, DEFAULT_PREFERENCES } from '../../services/storage';
 import { MessagingService } from '../../services/messaging';
@@ -13,13 +15,14 @@ import { RecareApiClient } from '../../services/api';
 import { VoiceService } from '../../services/voice';
 import { Header } from '../../components/Header';
 import { InteractionModeSelector } from '../../components/InteractionModeSelector';
-import { ConversationArea, ChatMessageItem } from '../../components/ConversationArea';
+import { ConversationArea } from '../../components/ConversationArea';
 import { ApprovalPrompt } from '../../components/ApprovalPrompt';
 import { TaskControls } from '../../components/TaskControls';
 import { Composer } from '../../components/Composer';
 import { AccessibilitySettings } from '../../components/AccessibilitySettings';
 import { OnboardingModal } from '../../components/OnboardingModal';
 import { TaskHistory } from '../../components/TaskHistory';
+import { LocalModelModal } from '../../components/LocalModelModal';
 
 import { FirebaseAiService, CurrentInferencePath } from '../../services/firebase-ai/firebaseAiService';
 
@@ -27,6 +30,7 @@ export default function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showLocalModelSetup, setShowLocalModelSetup] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isBackendConnected, setIsBackendConnected] = useState(true);
   const [inferencePath, setInferencePath] = useState<CurrentInferencePath>('idle');
@@ -40,31 +44,63 @@ export default function App() {
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
 
-  // Chat conversation history
+  // Persistent chat conversation history
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
+  const [conversationCreatedAt, setConversationCreatedAt] = useState<string | null>(null);
+  const hasHydratedConversationsRef = useRef(false);
+
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
+  const isLiveVoiceRef = useRef(isLiveVoiceActive);
+  isLiveVoiceRef.current = isLiveVoiceActive;
   const listenTriggerRef = useRef<(() => void) | null>(null);
 
-  // Load preferences and check health on mount
+  const checkRenderHealth = async (): Promise<boolean> => {
+    const healthy = await RecareApiClient.checkHealth();
+    setIsBackendConnected(healthy);
+    return healthy;
+  };
+
+  // Load preferences, restore previous active conversation, and check Render health on mount
   useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
     async function init() {
-      const prefs = await StorageService.getPreferences();
+      const [prefs, onboardingDone, savedConvs, savedActiveId] = await Promise.all([
+        StorageService.getPreferences(),
+        StorageService.isOnboardingCompleted(),
+        StorageService.getConversations(),
+        StorageService.getActiveConversationId(),
+      ]);
+
       setPreferences(prefs);
-
-      // Initialize Firebase AI Logic service
-      FirebaseAiService.initialize().catch((err) => {
-        console.warn('Firebase AI Logic init error:', err);
-      });
-
-      const onboardingDone = await StorageService.isOnboardingCompleted();
       if (!onboardingDone) {
         setShowOnboarding(true);
       }
 
-      const healthy = await RecareApiClient.checkHealth();
-      setIsBackendConnected(healthy);
+      if (savedConvs.length > 0) {
+        const target = savedActiveId
+          ? savedConvs.find((c) => c.id === savedActiveId)
+          : savedConvs[0];
+        if (target && target.messages.length > 0) {
+          setActiveConversationId(target.id);
+          setConversationCreatedAt(target.createdAt);
+          setMessages(target.messages);
+        }
+      }
+      hasHydratedConversationsRef.current = true;
 
-      // Fetch active page context
+      // Initialize Firebase AI Logic service cleanly
+      FirebaseAiService.initialize().catch(() => {});
+
+      const healthy = await checkRenderHealth();
+      if (!healthy) {
+        // Retry once in case Render free tier is waking up from idle
+        retryTimer = setTimeout(() => {
+          checkRenderHealth();
+        }, 4000);
+      }
+
       refreshPageContext();
     }
     init();
@@ -79,11 +115,42 @@ export default function App() {
       chrome.runtime.onMessage.addListener(messageListener);
     }
     return () => {
+      if (retryTimer) clearTimeout(retryTimer);
       if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
         chrome.runtime.onMessage.removeListener(messageListener);
       }
     };
   }, []);
+
+  // Automatically persist active conversation whenever messages update
+  useEffect(() => {
+    if (!hasHydratedConversationsRef.current || messages.length === 0) return;
+
+    const now = new Date().toISOString();
+    const convId = activeConversationId || `conv_${Date.now()}`;
+    const createdAt = conversationCreatedAt || now;
+    if (!activeConversationId) {
+      setActiveConversationId(convId);
+      setConversationCreatedAt(createdAt);
+    }
+
+    const firstUserMsg = messages.find((m) => m.sender === 'user')?.text;
+    const rawTitle = firstUserMsg || messages[0]?.text || 'Conversation';
+    const title = rawTitle.length > 48 ? `${rawTitle.slice(0, 48).trim()}...` : rawTitle;
+
+    const record: StoredConversation = {
+      id: convId,
+      title,
+      domain: pageContext?.domain,
+      url: pageContext?.url,
+      createdAt,
+      updatedAt: now,
+      messages,
+    };
+
+    StorageService.saveConversation(record).catch(() => {});
+    StorageService.setActiveConversationId(convId).catch(() => {});
+  }, [messages, activeConversationId, conversationCreatedAt, pageContext?.domain, pageContext?.url]);
 
   const refreshPageContext = async (): Promise<PageContext | null> => {
     try {
@@ -152,26 +219,37 @@ export default function App() {
       },
     ]);
 
+    const triggerNextLiveListen = () => {
+      if (isLiveVoiceRef.current && listenTriggerRef.current) {
+        setTimeout(() => {
+          if (isLiveVoiceRef.current) {
+            listenTriggerRef.current?.();
+          }
+        }, 350);
+      }
+    };
+
     const mode = preferences.response_output_mode || 'both';
     const shouldSpeak = (mode === 'both' || mode === 'voice' || preferences.voice_enabled) && mode !== 'text';
     if (shouldSpeak && (spokenText || text)) {
       VoiceService.speak(
         spokenText || text,
         preferences.speech_rate,
-        () => {
-          if (isLiveVoiceActive && listenTriggerRef.current) {
-            setTimeout(() => {
-              listenTriggerRef.current?.();
-            }, 350);
-          }
-        },
+        triggerNextLiveListen,
         preferences.voice_gender !== 'neutral' ? preferences.voice_gender : undefined
       );
+    } else {
+      triggerNextLiveListen();
     }
   };
 
   /** Handle user prompt input (text or speech) */
   const handleUserMessage = async (userInput: string) => {
+    const historyForBackend = messages.slice(-10).map((m) => ({
+      role: m.sender === 'user' ? 'user' : 'assistant',
+      content: m.text,
+    }));
+
     addUserMessage(userInput);
     const liveCtx = await refreshPageContext();
 
@@ -184,38 +262,59 @@ export default function App() {
     };
 
     const trimmedInput = userInput.trim().toLowerCase();
-    
-    // Explicit action intent check (user wants to perform a task on the website)
-    const actionWords = ['signin', 'sign in', 'login', 'log in', 'download', 'click', 'press', 'tap', 'fill', 'type', 'enter', 'submit', 'search', 'find', 'open', 'buy', 'order', 'register', 'watch', 'play', 'go to'];
+
+    // Explicit action intent check (user wants to perform a browser action)
+    const actionWords = [
+      'signin',
+      'sign in',
+      'login',
+      'log in',
+      'download',
+      'click',
+      'press',
+      'tap',
+      'fill',
+      'type',
+      'enter',
+      'submit',
+      'search',
+      'find',
+      'open',
+      'buy',
+      'order',
+      'register',
+      'watch',
+      'play',
+      'go to',
+      'scroll',
+      'select',
+      'choose',
+    ];
     const hasExplicitActionIntent = actionWords.some((w) => trimmedInput.includes(w));
 
-    // Only route to conversational explanation if NOT an action request
-    const isQuestionOrExplanation =
-      !hasExplicitActionIntent &&
-      (trimmedInput.endsWith('?') ||
-      trimmedInput.startsWith('what') ||
-      trimmedInput.startsWith('explain') ||
-      trimmedInput.startsWith('summar') ||
-      trimmedInput.startsWith('simplif') ||
-      trimmedInput.startsWith('how') ||
-      trimmedInput.startsWith('hi') ||
-      trimmedInput.startsWith('hello') ||
-      trimmedInput.startsWith('who are you') ||
-      trimmedInput.startsWith('where am i') ||
-      trimmedInput === 'where am i' ||
-      trimmedInput === 'help');
+    // Conversational / explanation queries (including speech without punctuation) go via Render Chat + Nano fallback
+    const isConversational = !hasExplicitActionIntent || preferences.interaction_mode === 'guide';
 
-    // 1. On-Device / Hybrid Explanation with Firebase AI Logic (Gemini Nano 4)
-    if (isQuestionOrExplanation) {
-      setInferencePath('on_device');
+    // 1. Render Cloud Chat + Automatic Local Gemini Nano Fallback
+    if (isConversational && !hasExplicitActionIntent) {
+      setInferencePath(
+        preferences.inference_mode === 'ONLY_ON_DEVICE' || preferences.inference_mode === 'PREFER_ON_DEVICE'
+          ? 'on_device'
+          : 'in_cloud'
+      );
       try {
         const aiRes = await FirebaseAiService.explainPageLocally(
           currentCtx,
           preferences.simplified_language,
-          preferences.inference_mode
+          preferences.inference_mode,
+          userInput,
+          historyForBackend
         );
 
         setInferencePath(aiRes.inferenceSource);
+        if (aiRes.inferenceSource === 'in_cloud') {
+          setIsBackendConnected(true);
+        }
 
         // Highlight candidate elements if mentioned in query
         const words = userInput.toLowerCase().split(/\s+/);
@@ -242,100 +341,18 @@ export default function App() {
       return;
     }
 
-    // 2. Cloud-Powered Task Planning & Function Calling with Firebase AI Logic & Backend
+    // 2. Render Cloud Task State Machine (+ Local Gemini Nano Fallback when offline)
     try {
       setInferencePath('in_cloud');
       setTaskState('PLANNING');
 
-      // Check if Cloud Function Calling generates tool calls
-      const cloudAI = await FirebaseAiService.runCloudAssistantWithTools(
-        userInput,
-        currentCtx
-      );
-
-      if (cloudAI.toolCalls && cloudAI.toolCalls.length > 0) {
-        // Execute tool call directly with real-time feedback
-        const tool = cloudAI.toolCalls[0];
-        if (tool.name === 'highlight_element') {
-          await MessagingService.highlightElement(tool.args.element_id, undefined, tool.args.label);
-          addAssistantMessage(
-            cloudAI.text,
-            cloudAI.text,
-            undefined,
-            ['Click it for me', 'Continue task'],
-            'in_cloud',
-            cloudAI.modelUsed
-          );
-          setTaskState('COMPLETED');
-          return;
-        } else if (tool.name === 'click_element') {
-          await MessagingService.executeBrowserAction({
-            action_id: crypto.randomUUID(),
-            type: 'CLICK',
-            target: { element_id: tool.args.element_id },
-            reason: tool.args.reason || 'Voice tool command execution',
-            requires_approval: false,
-            risk_level: 'LOW',
-          });
-          addAssistantMessage(
-            cloudAI.text || `Clicked control ${tool.args.element_id}.`,
-            cloudAI.text || `I clicked the control for you.`,
-            undefined,
-            ['What next?', 'Read page content'],
-            'in_cloud',
-            cloudAI.modelUsed
-          );
-          setTaskState('COMPLETED');
-          return;
-        } else if (tool.name === 'fill_input') {
-          await MessagingService.executeBrowserAction({
-            action_id: crypto.randomUUID(),
-            type: 'FILL',
-            target: { element_id: tool.args.element_id },
-            value: tool.args.value || '',
-            reason: tool.args.reason || 'Voice form filling tool',
-            requires_approval: false,
-            risk_level: 'LOW',
-          });
-          addAssistantMessage(
-            cloudAI.text || `Filled ${tool.args.element_id} with "${tool.args.value}".`,
-            cloudAI.text || `I entered ${tool.args.value} for you.`,
-            undefined,
-            ['Submit form', 'Clear input'],
-            'in_cloud',
-            cloudAI.modelUsed
-          );
-          setTaskState('COMPLETED');
-          return;
-        } else if (tool.name === 'scroll_page') {
-          await MessagingService.executeBrowserAction({
-            action_id: crypto.randomUUID(),
-            type: 'SCROLL',
-            options: { delta_y: tool.args.delta_y || 400 },
-            reason: 'Voice scroll command',
-            requires_approval: false,
-            risk_level: 'LOW',
-          });
-          addAssistantMessage(
-            cloudAI.text || `Scrolled the page.`,
-            cloudAI.text || `I scrolled the page for you.`,
-            undefined,
-            ['Scroll more', 'Read top elements'],
-            'in_cloud',
-            cloudAI.modelUsed
-          );
-          setTaskState('COMPLETED');
-          return;
-        }
-      }
-
-      // Hand off to Task State Machine for multi-step execution & safety policies
       const taskRes = await RecareApiClient.createTask(
         userInput,
         preferences.interaction_mode,
         currentCtx
       );
 
+      setIsBackendConnected(true);
       setActiveTaskId(taskRes.task_id);
       setTaskState(taskRes.state);
 
@@ -346,7 +363,7 @@ export default function App() {
           taskRes.plan,
           undefined,
           'in_cloud',
-          'Firebase AI Cloud & Strands'
+          'Recare Cloud (Render)'
         );
       }
 
@@ -380,9 +397,28 @@ export default function App() {
         await executeActionCycle(taskRes.task_id, taskRes.current_action);
       }
     } catch (err: any) {
-      setTaskState('FAILED');
-      setInferencePath('idle');
-      addAssistantMessage(`Could not start task: ${err.message}`);
+      // Automatic fallback to Local Gemini Nano / DOM guidance if Render is unreachable
+      setIsBackendConnected(false);
+      setTaskState('IDLE');
+      try {
+        const localFallback = await FirebaseAiService.planOrAnswerWithLocalFallback(
+          userInput,
+          currentCtx,
+          preferences.simplified_language
+        );
+        setInferencePath(localFallback.inferenceSource);
+        addAssistantMessage(
+          localFallback.text,
+          localFallback.text,
+          undefined,
+          undefined,
+          localFallback.inferenceSource,
+          localFallback.modelUsed
+        );
+      } catch {
+        setInferencePath('idle');
+        addAssistantMessage(`Could not reach Render backend: ${err.message}`);
+      }
     }
   };
 
@@ -501,6 +537,9 @@ export default function App() {
 
   const handleNewConversation = async () => {
     setMessages([]);
+    setActiveConversationId(null);
+    setConversationCreatedAt(null);
+    await StorageService.setActiveConversationId(null);
     setActiveTaskId(null);
     setTaskState('IDLE');
     setPendingApproval(null);
@@ -509,6 +548,22 @@ export default function App() {
       await MessagingService.sendToActiveTab({ type: 'CLEAR_HIGHLIGHTS' });
     } catch {}
     setShowHistory(false);
+  };
+
+  const handleSelectConversation = async (conv: StoredConversation) => {
+    setActiveConversationId(conv.id);
+    setConversationCreatedAt(conv.createdAt);
+    setMessages(conv.messages || []);
+    await StorageService.setActiveConversationId(conv.id);
+    setShowHistory(false);
+  };
+
+  const handleDeleteConversation = async (convId: string) => {
+    if (convId === activeConversationId) {
+      setMessages([]);
+      setActiveConversationId(null);
+      setConversationCreatedAt(null);
+    }
   };
 
   return (
@@ -532,6 +587,7 @@ export default function App() {
         onNewConversation={handleNewConversation}
         onOpenSettings={() => setShowSettings(true)}
         onOpenHistory={() => setShowHistory(true)}
+        onOpenLocalModelSetup={() => setShowLocalModelSetup(true)}
       />
 
       <InteractionModeSelector
@@ -575,14 +631,18 @@ export default function App() {
         <AccessibilitySettings
           preferences={preferences}
           onUpdate={handlePreferencesUpdate}
+          onOpenLocalModelSetup={() => setShowLocalModelSetup(true)}
           onClose={() => setShowSettings(false)}
         />
       )}
 
       {showHistory && (
         <TaskHistory
+          activeConversationId={activeConversationId}
           onClose={() => setShowHistory(false)}
           onNewConversation={handleNewConversation}
+          onSelectConversation={handleSelectConversation}
+          onDeleteConversation={handleDeleteConversation}
           onSelectTask={(t) => {
             setShowHistory(false);
             addAssistantMessage(
@@ -591,6 +651,14 @@ export default function App() {
               t.plan
             );
           }}
+        />
+      )}
+
+      {showLocalModelSetup && (
+        <LocalModelModal
+          isBackendConnected={isBackendConnected}
+          onRetryBackend={checkRenderHealth}
+          onClose={() => setShowLocalModelSetup(false)}
         />
       )}
 

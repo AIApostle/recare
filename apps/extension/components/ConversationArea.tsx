@@ -1,20 +1,9 @@
 import React from 'react';
-import { PlanStep, TaskState } from '../types';
-import { Bot, Volume2, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { ChatMessageItem } from '../types';
+import { Bot, Volume2 } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
-export interface ChatMessageItem {
-  id: string;
-  sender: 'user' | 'assistant';
-  text: string;
-  spokenText?: string;
-  timestamp: string;
-  plan?: PlanStep[];
-  state?: TaskState;
-  suggestedActions?: string[];
-  inferenceSource?: 'on_device' | 'in_cloud';
-  modelUsed?: string;
-}
+export type { ChatMessageItem };
 
 interface ConversationAreaProps {
   messages: ChatMessageItem[];

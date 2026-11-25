@@ -100,6 +100,11 @@ export interface PlanStep {
   risk_level: RiskLevel;
 }
 
+export interface ApprovalResponse {
+  approval_id: string;
+  approved: boolean;
+}
+
 export interface ApprovalRequest {
   approval_id: string;
   task_id: string;
@@ -123,6 +128,29 @@ export interface TaskResponse {
   message?: string;
   completion_summary?: string;
   error?: string;
+}
+
+export interface ChatMessageItem {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  spokenText?: string;
+  timestamp: string;
+  plan?: PlanStep[];
+  state?: TaskState;
+  suggestedActions?: string[];
+  inferenceSource?: 'on_device' | 'in_cloud';
+  modelUsed?: string;
+}
+
+export interface StoredConversation {
+  id: string;
+  title: string;
+  domain?: string;
+  url?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessageItem[];
 }
 
 export interface UserPreferences {

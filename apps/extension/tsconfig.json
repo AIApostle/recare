@@ -19,5 +19,5 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["entrypoints/**/*", "components/**/*", "features/**/*", "hooks/**/*", "services/**/*", "stores/**/*", "lib/**/*", "tests/**/*", "wxt.config.ts"]
+  "include": [".wxt/wxt.d.ts", "entrypoints/**/*", "components/**/*", "features/**/*", "hooks/**/*", "services/**/*", "stores/**/*", "lib/**/*", "tests/**/*", "wxt.config.ts"]
 }

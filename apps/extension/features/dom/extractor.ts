@@ -43,7 +43,9 @@ export class DomExtractor {
       }
       const parentLabel = el.closest('label');
       if (parentLabel?.textContent?.trim()) return parentLabel.textContent.trim();
-      if (el.placeholder?.trim()) return el.placeholder.trim();
+      if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.placeholder?.trim()) {
+        return el.placeholder.trim();
+      }
     }
 
     // 4. Inner text / button text

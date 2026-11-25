@@ -88,6 +88,70 @@ class GeminiFallbackModel(Model):
     async def structured_output(self, *args: Any, **kwargs: Any) -> Any:
         return {}
 
+    async def _post_gemini_fallback(
+        self,
+        contents: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        temperature: float = 0.2,
+        max_output_tokens: int = 1024,
+    ) -> Optional[str]:
+        """Post request across Gemini candidate models until one returns valid text."""
+        api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
+        if not api_key:
+            return None
+
+        candidates = [self.model_id] + [m for m in GEMINI_FALLBACK_MODELS if m != self.model_id]
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            for candidate in candidates:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={api_key}"
+                payload: Dict[str, Any] = {
+                    "contents": contents,
+                    "generationConfig": {"temperature": temperature, "maxOutputTokens": max_output_tokens},
+                }
+                if system_prompt:
+                    payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+                try:
+                    res = await client.post(url, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        if parts and "text" in parts[0]:
+                            logger.info(f"[Recare] Successfully inferred using {candidate}")
+                            return parts[0]["text"]
+                    else:
+                        logger.warning(f"[Recare] Model {candidate} returned HTTP {res.status_code}. Attempting fallback...")
+                except Exception as e:
+                    logger.warning(f"[Recare] Error connecting to {candidate}: {e}. Attempting fallback...")
+        return None
+
+    async def transcribe_audio(self, audio_base64: str, mime_type: str = "audio/webm") -> str:
+        """Transcribe short spoken audio clips into plain text for live voice fallback."""
+        raw_b64 = audio_base64.split(",")[-1].strip()
+        if not raw_b64:
+            return ""
+        contents = [
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": (
+                            "Transcribe what the user says in this audio accurately as plain text. "
+                            "Return ONLY the spoken words. If there is only silence or background noise, return an empty string."
+                        )
+                    },
+                    {
+                        "inlineData": {
+                            "mimeType": mime_type or "audio/webm",
+                            "data": raw_b64,
+                        }
+                    },
+                ],
+            }
+        ]
+        result = await self._post_gemini_fallback(contents, temperature=0.0, max_output_tokens=256)
+        return (result or "").strip()
+
     async def stream(
         self,
         messages: List[Message],
@@ -95,57 +159,28 @@ class GeminiFallbackModel(Model):
         system_prompt: Optional[str] = None,
         **kwargs: Any,
     ) -> AsyncIterable[StreamEvent]:
-        api_key = settings.GEMINI_API_KEY.strip() if settings.GEMINI_API_KEY else ""
-        last_msg = _extract_content(messages[-1]) if messages else "Hello"
         image_base64 = kwargs.get("image_base64")
+        contents: List[Dict[str, Any]] = []
 
-        # Build candidate chain starting with primary requested model
-        candidates = [self.model_id] + [m for m in GEMINI_FALLBACK_MODELS if m != self.model_id]
+        if messages:
+            for idx, msg in enumerate(messages):
+                raw_role = msg.get("role", "user") if isinstance(msg, dict) else getattr(msg, "role", "user")
+                gemini_role = "model" if raw_role == "assistant" else "user"
+                parts: List[Dict[str, Any]] = [{"text": _extract_content(msg)}]
+                if idx == len(messages) - 1 and gemini_role == "user" and image_base64:
+                    raw_b64 = image_base64.split(",")[-1]
+                    parts.append({
+                        "inlineData": {
+                            "mimeType": "image/jpeg",
+                            "data": raw_b64,
+                        }
+                    })
+                contents.append({"role": gemini_role, "parts": parts})
+        else:
+            contents.append({"role": "user", "parts": [{"text": "Hello"}]})
 
-        text_result = None
-        model_used = None
-
-        if api_key:
-            async with httpx.AsyncClient(timeout=25.0) as client:
-                for candidate in candidates:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{candidate}:generateContent?key={api_key}"
-                    parts: List[Dict[str, Any]] = [{"text": str(last_msg)}]
-
-                    # Attach multimodal visual screenshot if present
-                    if image_base64:
-                        raw_b64 = image_base64.split(",")[-1]
-                        parts.append({
-                            "inlineData": {
-                                "mimeType": "image/jpeg",
-                                "data": raw_b64,
-                            }
-                        })
-
-                    payload: Dict[str, Any] = {
-                        "contents": [{"parts": parts}],
-                        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
-                    }
-                    if system_prompt:
-                        payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
-
-                    try:
-                        res = await client.post(url, json=payload)
-                        if res.status_code == 200:
-                            data = res.json()
-                            parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                            if parts and "text" in parts[0]:
-                                text_result = parts[0]["text"]
-                                model_used = candidate
-                                logger.info(f"[Recare] Successfully inferred using {candidate}")
-                                break
-                        else:
-                            logger.warning(f"[Recare] Model {candidate} returned HTTP {res.status_code}. Attempting fallback...")
-                    except Exception as e:
-                        logger.warning(f"[Recare] Error connecting to {candidate}: {e}. Attempting fallback...")
-
-        # If all Gemini models fail or no API key is provided
+        text_result = await self._post_gemini_fallback(contents, system_prompt=system_prompt)
         if not text_result:
-            model_used = "Unavailable"
             text_result = "AI model is currently not available."
 
         yield MessageStartEvent(role="assistant")

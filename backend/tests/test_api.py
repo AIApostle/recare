@@ -12,11 +12,15 @@ async def setup_database():
 async def test_health_check():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert "Recare" in data["service"]
+        for path in ["/health", "/healthz", "/api/v1/health"]:
+            response = await client.get(path)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "healthy"
+            assert "Recare" in data["service"]
+            assert "gemini_configured" in data
+        head_res = await client.head("/health")
+        assert head_res.status_code == 200
 
 @pytest.mark.asyncio
 async def test_chat_endpoint():
@@ -41,13 +45,21 @@ async def test_chat_endpoint():
                     }
                 ]
             },
-            "mode": "guide"
+            "mode": "guide",
+            "conversation_history": [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi! How can I help you today?"}
+            ]
         }
         response = await client.post("/api/v1/chat", json=payload)
         assert response.status_code == 200
         data = response.json()
         assert len(data["reply"]) > 0
         assert len(data["suggested_actions"]) > 0
+
+        transcribe_res = await client.post("/api/v1/chat/transcribe", json={"audio_base64": ""})
+        assert transcribe_res.status_code == 200
+        assert transcribe_res.json()["transcript"] == ""
 
 @pytest.mark.asyncio
 async def test_task_creation_and_lifecycle():

@@ -40,12 +40,31 @@ class RecareAgentOrchestrator:
             system_prompt=full_prompt,
         )
 
+    @staticmethod
+    def _extract_stream_text(ev: Any) -> str:
+        """Extract delta text from either dict or Strands stream event objects."""
+        if isinstance(ev, dict):
+            delta = ev.get("delta")
+            if isinstance(delta, dict):
+                return str(delta.get("text", ""))
+            if isinstance(delta, str):
+                return delta
+            return ""
+        if hasattr(ev, "delta"):
+            delta = getattr(ev, "delta")
+            if hasattr(delta, "text"):
+                return str(delta.text)
+            if isinstance(delta, str):
+                return delta
+        return ""
+
     async def handle_chat(
         self,
         message: str,
         page_context: Optional[Dict[str, Any]] = None,
         mode: str = "guide",
         simplified: bool = False,
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> ChatResponse:
         """Process an interactive chat or page question with live AI inference."""
         ctx = page_context or {}
@@ -75,27 +94,23 @@ class RecareAgentOrchestrator:
         screenshot_b64 = ctx.get("screenshot_base64")
         try:
             from strands.types.content import Message
+            stream_messages: List[Any] = []
+            for h in (conversation_history or [])[-10:]:
+                role = "assistant" if h.get("role") == "assistant" else "user"
+                content = str(h.get("content", "")).strip()
+                if content:
+                    stream_messages.append(Message(role=role, content=content))
+            stream_messages.append(Message(role="user", content=message))
+
             events = model.stream(
-                messages=[Message(role="user", content=message)],
+                messages=stream_messages,
                 system_prompt=system_instruction,
                 image_base64=screenshot_b64,
             )
-            chunks = []
-            async for ev in events:
-                if isinstance(ev, dict):
-                    delta = ev.get("delta")
-                    if isinstance(delta, dict) and "text" in delta:
-                        chunks.append(delta["text"])
-                    elif isinstance(delta, str):
-                        chunks.append(delta)
-                elif hasattr(ev, "delta"):
-                    delta = getattr(ev, "delta")
-                    if hasattr(delta, "text"):
-                        chunks.append(delta.text)
-                    elif isinstance(delta, str):
-                        chunks.append(delta)
-            if chunks:
-                reply = "".join(chunks).strip()
+            chunks = [self._extract_stream_text(ev) async for ev in events]
+            text = "".join(chunks).strip()
+            if text:
+                reply = text
         except Exception as e:
             logger.warning(f"Error querying model for chat: {e}")
 
@@ -227,12 +242,10 @@ class RecareAgentOrchestrator:
                     messages=[Message(role="user", content=user_request)],
                     system_prompt=f"You are Recare, an AI browser assistant on page '{ctx.get('title', 'Webpage')}'. Respond helpfully and concisely to the user's conversational request in 1-2 natural sentences."
                 )
-                chunks = []
-                async for ev in events:
-                    if hasattr(ev, "delta") and hasattr(ev.delta, "text"):
-                        chunks.append(ev.delta.text)
-                if chunks:
-                    conv_reply = "".join(chunks).strip()
+                chunks = [self._extract_stream_text(ev) async for ev in events]
+                text = "".join(chunks).strip()
+                if text:
+                    conv_reply = text
             except Exception as e:
                 logger.warning(f"Error querying model: {e}")
 
@@ -276,20 +289,7 @@ class RecareAgentOrchestrator:
                 messages=[Message(role="user", content=agent_prompt)],
                 image_base64=ctx.get("screenshot_base64"),
             )
-            llm_text = ""
-            async for ev in events:
-                if isinstance(ev, dict):
-                    delta = ev.get("delta")
-                    if isinstance(delta, dict) and "text" in delta:
-                        llm_text += delta["text"]
-                    elif isinstance(delta, str):
-                        llm_text += delta
-                elif hasattr(ev, "delta"):
-                    delta = getattr(ev, "delta")
-                    if hasattr(delta, "text"):
-                        llm_text += delta.text
-                    elif isinstance(delta, str):
-                        llm_text += delta
+            llm_text = "".join([self._extract_stream_text(ev) async for ev in events])
 
             for line in llm_text.splitlines():
                 if line.startswith("ELEMENT_ID:"):
