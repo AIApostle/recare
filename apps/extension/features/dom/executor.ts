@@ -98,14 +98,57 @@ export class DomExecutor {
 
           const val = action.value || '';
           if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-            el.value = val;
+            const proto =
+              el instanceof HTMLTextAreaElement
+                ? HTMLTextAreaElement.prototype
+                : HTMLInputElement.prototype;
+            const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (nativeSetter) {
+              nativeSetter.call(el, val);
+            } else {
+              el.value = val;
+            }
             el.dispatchEvent(new Event('input', { bubbles: true }));
             el.dispatchEvent(new Event('change', { bubbles: true }));
+
+            if (action.options?.submit || action.options?.submit_search) {
+              const keyInit: KeyboardEventInit = {
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
+                bubbles: true,
+                cancelable: true,
+              };
+              const notPrevented = el.dispatchEvent(new KeyboardEvent('keydown', keyInit));
+              el.dispatchEvent(new KeyboardEvent('keypress', keyInit));
+              el.dispatchEvent(new KeyboardEvent('keyup', keyInit));
+
+              const form = el.closest('form');
+              if (form && notPrevented) {
+                const submitBtn = form.querySelector<HTMLElement>(
+                  'button[type="submit"], input[type="submit"], button[aria-label*="search" i]'
+                );
+                if (submitBtn) {
+                  submitBtn.click();
+                } else if (typeof form.requestSubmit === 'function') {
+                  form.requestSubmit();
+                } else {
+                  form.submit();
+                }
+              }
+              await new Promise((r) => setTimeout(r, 250));
+            }
           } else {
             el.textContent = val;
           }
 
-          return { action_id: action.action_id, success: true, current_url: window.location.href };
+          return {
+            action_id: action.action_id,
+            success: true,
+            current_url: window.location.href,
+            observed_changes: { url_changed: window.location.href !== beforeUrl },
+          };
         }
 
         case 'SELECT': {
@@ -119,16 +162,45 @@ export class DomExecutor {
         }
 
         case 'SCROLL': {
-          const deltaY = action.options?.deltaY ?? 400;
+          const deltaY = action.options?.deltaY ?? action.options?.delta_y ?? 400;
           window.scrollBy({ top: deltaY, behavior: 'smooth' });
           await new Promise((r) => setTimeout(r, 300));
           return { action_id: action.action_id, success: true, current_url: window.location.href };
         }
 
         case 'NAVIGATE': {
+          if (action.value === '__BACK__') {
+            window.history.back();
+            await new Promise((r) => setTimeout(r, 250));
+            return {
+              action_id: action.action_id,
+              success: true,
+              current_url: window.location.href,
+              observed_changes: { navigated_back: true },
+            };
+          }
+          if (action.value === '__FORWARD__') {
+            window.history.forward();
+            await new Promise((r) => setTimeout(r, 250));
+            return {
+              action_id: action.action_id,
+              success: true,
+              current_url: window.location.href,
+              observed_changes: { navigated_forward: true },
+            };
+          }
+          if (action.value === '__RELOAD__') {
+            window.location.reload();
+            return { action_id: action.action_id, success: true, current_url: window.location.href };
+          }
           if (action.value) {
             window.location.href = action.value;
-            return { action_id: action.action_id, success: true, current_url: action.value };
+            return {
+              action_id: action.action_id,
+              success: true,
+              current_url: action.value,
+              observed_changes: { url_changed: true },
+            };
           }
           return { action_id: action.action_id, success: false, error: 'Navigate URL missing' };
         }

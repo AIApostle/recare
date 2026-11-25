@@ -5,6 +5,7 @@ import {
   ApprovalResponse,
   InteractionMode,
 } from '../types';
+import { RecareWsClient } from './wsClient';
 
 let cachedApiUrl: string | null = null;
 
@@ -72,12 +73,17 @@ export class RecareApiClient {
     }
   }
 
+  static async connectRealtime(): Promise<void> {
+    await RecareWsClient.connect();
+  }
+
   static async sendChat(
     message: string,
     pageContext?: PageContext,
     mode: InteractionMode = 'guide',
     simplified: boolean = false,
-    conversationHistory: Array<{ role: string; content: string }> = []
+    conversationHistory: Array<{ role: string; content: string }> = [],
+    onStatus?: (statusText: string) => void
   ): Promise<{
     reply: string;
     spoken_summary?: string;
@@ -85,6 +91,21 @@ export class RecareApiClient {
     suggested_actions: string[];
     suggested_task?: string;
   }> {
+    try {
+      const wsRes = await RecareWsClient.sendRequest<any>(
+        'chat',
+        {
+          message,
+          page_context: pageContext,
+          mode,
+          simplified_language: simplified,
+          conversation_history: conversationHistory,
+        },
+        onStatus
+      );
+      if (wsRes) return wsRes;
+    } catch {}
+
     const baseUrl = await getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/chat`, {
       method: 'POST',
@@ -104,6 +125,16 @@ export class RecareApiClient {
   }
 
   static async transcribeAudio(audioBase64: string, mimeType: string = 'audio/webm'): Promise<string> {
+    try {
+      const wsRes = await RecareWsClient.sendRequest<{ transcript?: string }>('transcribe', {
+        audio_base64: audioBase64,
+        mime_type: mimeType,
+      });
+      if (wsRes && typeof wsRes.transcript === 'string') {
+        return wsRes.transcript.trim();
+      }
+    } catch {}
+
     const baseUrl = await getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/chat/transcribe`, {
       method: 'POST',
@@ -123,8 +154,22 @@ export class RecareApiClient {
   static async createTask(
     userRequest: string,
     mode: InteractionMode,
-    pageContext?: PageContext
+    pageContext?: PageContext,
+    onStatus?: (statusText: string) => void
   ): Promise<TaskResponse> {
+    try {
+      const wsRes = await RecareWsClient.sendRequest<TaskResponse>(
+        'task_start',
+        {
+          user_request: userRequest,
+          mode,
+          page_context: pageContext,
+        },
+        onStatus
+      );
+      if (wsRes) return wsRes;
+    } catch {}
+
     const baseUrl = await getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/tasks`, {
       method: 'POST',
@@ -144,8 +189,22 @@ export class RecareApiClient {
   static async submitActionResult(
     taskId: string,
     actionResult: ActionResult,
-    pageContext?: PageContext
+    pageContext?: PageContext,
+    onStatus?: (statusText: string) => void
   ): Promise<TaskResponse> {
+    try {
+      const wsRes = await RecareWsClient.sendRequest<TaskResponse>(
+        'task_action_result',
+        {
+          task_id: taskId,
+          action_result: actionResult,
+          page_context: pageContext,
+        },
+        onStatus
+      );
+      if (wsRes) return wsRes;
+    } catch {}
+
     const baseUrl = await getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/action-result`, {
       method: 'POST',
@@ -166,6 +225,15 @@ export class RecareApiClient {
     approval: ApprovalResponse,
     pageContext?: PageContext
   ): Promise<TaskResponse> {
+    try {
+      const wsRes = await RecareWsClient.sendRequest<TaskResponse>('task_approval', {
+        task_id: taskId,
+        approval,
+        page_context: pageContext,
+      });
+      if (wsRes) return wsRes;
+    } catch {}
+
     const baseUrl = await getApiBaseUrl();
     const res = await fetch(`${baseUrl}/api/v1/tasks/${taskId}/approve`, {
       method: 'POST',

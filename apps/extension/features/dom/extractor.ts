@@ -53,8 +53,16 @@ export class DomExtractor {
       return el.textContent.trim().slice(0, 100);
     }
 
-    // 5. Title attribute
+    // 5. Title / name / icon class hints for icon-only buttons
     if (el.title?.trim()) return el.title.trim();
+    const attrName = el.getAttribute('name')?.trim();
+    if (attrName) return attrName;
+    const cls = typeof el.className === 'string' ? el.className.toLowerCase() : '';
+    const idAttr = (el.id || '').toLowerCase();
+    const hint = `${idAttr} ${cls}`;
+    if (hint.includes('search')) return 'Search';
+    if (hint.includes('close') || hint.includes('dismiss')) return 'Close';
+    if (hint.includes('menu') || hint.includes('nav')) return 'Menu';
 
     return '';
   }

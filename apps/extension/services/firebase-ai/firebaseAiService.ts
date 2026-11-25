@@ -165,8 +165,9 @@ export class FirebaseAiService {
     const headings = pageContext.headings.map((h) => h.text).slice(0, 5).join(', ');
     const elements = pageContext.interactive_elements
       .slice(0, 12)
-      .map((e) => `[${e.element_id}] <${e.tag}> "${e.accessible_name || e.text || 'unnamed'}"`)
-      .join('\n');
+      .map((e) => e.accessible_name || e.text || '')
+      .filter(Boolean)
+      .join(', ');
 
     const historyBlock = conversationHistory.length > 0
       ? `\nRecent conversation:\n${conversationHistory
@@ -176,12 +177,12 @@ export class FirebaseAiService {
       : '';
 
     const localSystemPrompt = simplified
-      ? `You are Recare, an accessibility browser assistant. Explain in very simple, calm, plain language without jargon.`
-      : `You are Recare, an AI accessibility browser assistant. Answer clearly, accurately, and concisely grounded in the webpage details.`;
+      ? `You are Recare, an accessibility browser assistant. Explain in very simple, calm, plain language without jargon. NEVER output technical IDs like [elem_1] or HTML tags.`
+      : `You are Recare, an AI accessibility browser assistant. Answer clearly, accurately, and concisely in plain human language grounded in the webpage details. NEVER output technical IDs like [elem_1] or HTML tags.`;
 
     const promptBody = userMessage?.trim()
-      ? `${localSystemPrompt}\n\nWebpage: ${title} (${domain})\nSections: ${headings || 'None'}\nInteractive Controls:\n${elements}${historyBlock}\nUser: ${userMessage.trim()}`
-      : `${localSystemPrompt}\n\nSummarize "${title}" (${domain}), sections (${headings}), and main interactive controls:\n${elements}`;
+      ? `${localSystemPrompt}\n\nWebpage: ${title} (${domain})\nSections: ${headings || 'None'}\nVisible options: ${elements || 'General links'}${historyBlock}\nUser: ${userMessage.trim()}`
+      : `${localSystemPrompt}\n\nSummarize "${title}" (${domain}), sections (${headings}), and visible options (${elements}).`;
 
     const chatMessage = userMessage?.trim() || promptBody;
 
@@ -212,7 +213,8 @@ export class FirebaseAiService {
         });
 
         const result = await model.generateContent(promptBody);
-        const text = result.response.text()?.trim();
+        const rawText = result.response.text()?.trim();
+        const text = rawText ? rawText.replace(/\[?elem_\d+\]?\s*/gi, '').trim() : '';
         if (text) {
           const source =
             (result as any).inferenceSource === InferenceSource.ON_DEVICE

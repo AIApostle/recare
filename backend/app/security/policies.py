@@ -50,6 +50,15 @@ class PolicyEngine:
         if action.type == ActionType.NAVIGATE:
             return RiskLevel.LOW, False, "Page navigation"
 
+        # Safe search box typing & submitting (don't block movie/product names containing words like 'sign')
+        if action.type in [ActionType.FILL, ActionType.TYPE] and action.options and action.options.get("submit_search"):
+            target_check = " ".join([
+                action.target.accessible_name if action.target and action.target.accessible_name else "",
+                target_text or "",
+            ])
+            if not re.search(r"\b(pay|payment|purchase|buy|checkout|delete|remove|destroy|transfer)\b", target_check, re.IGNORECASE):
+                return RiskLevel.MEDIUM, False, "Search query entry and submission"
+
         # Check for target text and attributes
         check_text = " ".join([
             action.reason or "",

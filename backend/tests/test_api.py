@@ -133,3 +133,87 @@ async def test_task_creation_and_lifecycle():
         stream_res = await client.get(f"/api/v1/tasks/{task_id}/events")
         assert stream_res.status_code == 200
         assert "text/event-stream" in stream_res.headers.get("content-type", "")
+
+
+@pytest.mark.asyncio
+async def test_back_navigation_and_multistep_search():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Back navigation intent
+        back_res = await client.post("/api/v1/tasks", json={
+            "user_request": "okay take me back",
+            "mode": "assist",
+            "page_context": {"url": "https://thenkiri.com", "domain": "thenkiri.com", "title": "Nkiri", "headings": [], "interactive_elements": []},
+        })
+        assert back_res.status_code == 201
+        back_data = back_res.json()
+        assert back_data["current_action"]["type"] == "NAVIGATE"
+        assert back_data["current_action"]["value"] == "__BACK__"
+
+        # 2. Search toggle click -> revealed search input fill & submit multi-step loop
+        search_res = await client.post("/api/v1/tasks", json={
+            "user_request": "I want to search for The Social Network can you search for it for me",
+            "mode": "assist",
+            "page_context": {
+                "url": "https://thenkiri.com",
+                "domain": "thenkiri.com",
+                "title": "Nkiri",
+                "headings": [],
+                "interactive_elements": [
+                    {"element_id": "elem_3", "tag": "button", "role": "button", "accessible_name": "Search", "is_visible": True, "is_enabled": True}
+                ],
+            },
+        })
+        assert search_res.status_code == 201
+        s_data = search_res.json()
+        assert s_data["state"] == "WAITING_FOR_ACTION"
+        assert s_data["current_action"]["type"] == "CLICK"
+
+        step2_res = await client.post(f"/api/v1/tasks/{s_data['task_id']}/action-result", json={
+            "action_result": {"action_id": s_data["current_action"]["action_id"], "success": True},
+            "page_context": {
+                "url": "https://thenkiri.com",
+                "domain": "thenkiri.com",
+                "title": "Nkiri",
+                "headings": [],
+                "interactive_elements": [
+                    {"element_id": "elem_4", "tag": "input", "input_type": "search", "placeholder": "Search...", "is_visible": True, "is_enabled": True}
+                ],
+            },
+        })
+        assert step2_res.status_code == 200
+        s2_data = step2_res.json()
+        assert s2_data["state"] == "WAITING_FOR_ACTION"
+        assert s2_data["current_action"]["type"] == "FILL"
+        assert s2_data["current_action"]["value"] == "The Social Network"
+        assert s2_data["current_action"]["options"]["submit"] is True
+
+
+def test_websocket_realtime_channel():
+    from starlette.testclient import TestClient
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/v1/ws") as ws:
+            ws.send_json({"type": "ping", "request_id": "p1"})
+            pong = ws.receive_json()
+            assert pong["type"] == "pong"
+            assert pong["request_id"] == "p1"
+
+            ws.send_json({
+                "type": "chat",
+                "request_id": "c1",
+                "message": "where am i?",
+                "page_context": {
+                    "url": "https://thenkiri.com",
+                    "domain": "thenkiri.com",
+                    "title": "Welcome To Nkiri",
+                    "headings": [],
+                    "interactive_elements": [
+                        {"element_id": "elem_4", "tag": "a", "accessible_name": "Home", "is_visible": True, "is_enabled": True}
+                    ],
+                },
+            })
+            frame1 = ws.receive_json()
+            assert frame1["type"] == "status"
+            frame2 = ws.receive_json()
+            assert frame2["type"] == "chat_response"
+            assert "[elem_4]" not in frame2["data"]["reply"]

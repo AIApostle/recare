@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import logger
 from app.database.session import init_db
-from app.api.routes import health, tasks, chat, preferences
+from app.api.routes import health, tasks, chat, preferences, ws
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -35,6 +35,7 @@ app.include_router(health.router)
 app.include_router(tasks.router)
 app.include_router(chat.router)
 app.include_router(preferences.router)
+app.include_router(ws.router)
 
 if __name__ == "__main__":
     import uvicorn

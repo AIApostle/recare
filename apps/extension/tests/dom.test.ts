@@ -100,4 +100,50 @@ describe('DomExecutor', () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain('not found');
   });
+
+  it('submits enclosing form when FILL has submit option and handles __BACK__ navigation', async () => {
+    document.body.innerHTML = `
+      <form id="search-form">
+        <input id="search-box" data-recare-id="elem_10" type="search" value="" />
+        <button id="search-btn" type="submit">Search</button>
+      </form>
+    `;
+    let submittedBtnClicked = false;
+    document.getElementById('search-btn')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      submittedBtnClicked = true;
+    });
+
+    const fillRes = await DomExecutor.execute({
+      action_id: 'act_fill_submit',
+      type: 'FILL',
+      target: { element_id: 'elem_10' },
+      value: 'The Social Network',
+      options: { submit: true, submit_search: true },
+      reason: 'Searching',
+      requires_approval: false,
+      risk_level: 'LOW',
+    });
+
+    expect(fillRes.success).toBe(true);
+    expect((document.getElementById('search-box') as HTMLInputElement).value).toBe('The Social Network');
+    expect(submittedBtnClicked).toBe(true);
+
+    let wentBack = false;
+    const origBack = window.history.back;
+    window.history.back = () => {
+      wentBack = true;
+    };
+    const backRes = await DomExecutor.execute({
+      action_id: 'act_back',
+      type: 'NAVIGATE',
+      value: '__BACK__',
+      reason: 'Go back',
+      requires_approval: false,
+      risk_level: 'LOW',
+    });
+    window.history.back = origBack;
+    expect(backRes.success).toBe(true);
+    expect(wentBack).toBe(true);
+  });
 });

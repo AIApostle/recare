@@ -43,6 +43,7 @@ export default function App() {
   const [taskState, setTaskState] = useState<TaskState>('IDLE');
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
+  const [liveWorkingStatus, setLiveWorkingStatus] = useState<string | null>(null);
 
   // Persistent chat conversation history
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -90,8 +91,9 @@ export default function App() {
       }
       hasHydratedConversationsRef.current = true;
 
-      // Initialize Firebase AI Logic service cleanly
+      // Initialize Firebase AI Logic & persistent WebSocket connection cleanly
       FirebaseAiService.initialize().catch(() => {});
+      RecareApiClient.connectRealtime().catch(() => {});
 
       const healthy = await checkRenderHealth();
       if (!healthy) {
@@ -154,7 +156,9 @@ export default function App() {
 
   const refreshPageContext = async (): Promise<PageContext | null> => {
     try {
-      const ctx = await MessagingService.getPageContext();
+      const ctx =
+        (await MessagingService.getPageContext()) ||
+        (await MessagingService.getActiveTabFallbackContext());
       if (ctx) {
         // Capture visible page screenshot for multimodal visual understanding
         const screenshot = await MessagingService.capturePageScreenshot();
@@ -254,16 +258,16 @@ export default function App() {
     const liveCtx = await refreshPageContext();
 
     const currentCtx = liveCtx || pageContext || {
-      url: window.location.href,
-      domain: window.location.hostname,
-      title: document.title || 'Webpage',
+      url: 'about:blank',
+      domain: 'browser',
+      title: 'Current Tab',
       headings: [],
       interactive_elements: [],
     };
 
     const trimmedInput = userInput.trim().toLowerCase();
 
-    // Explicit action intent check (user wants to perform a browser action)
+    // Explicit action intent check (user wants Recare to operate the browser)
     const actionWords = [
       'signin',
       'sign in',
@@ -286,16 +290,25 @@ export default function App() {
       'watch',
       'play',
       'go to',
+      'go back',
+      'take me back',
+      'previous page',
+      'forward',
+      'reload',
+      'refresh',
       'scroll',
       'select',
       'choose',
+      'close',
+      'dismiss',
+      "didn't",
     ];
     const hasExplicitActionIntent = actionWords.some((w) => trimmedInput.includes(w));
 
-    // Conversational / explanation queries (including speech without punctuation) go via Render Chat + Nano fallback
+    // Conversational / explanation queries go via Firebase hybrid + WebSocket Render Chat
     const isConversational = !hasExplicitActionIntent || preferences.interaction_mode === 'guide';
 
-    // 1. Render Cloud Chat + Automatic Local Gemini Nano Fallback
+    // 1. Conversational & Page Understanding
     if (isConversational && !hasExplicitActionIntent) {
       setInferencePath(
         preferences.inference_mode === 'ONLY_ON_DEVICE' || preferences.inference_mode === 'PREFER_ON_DEVICE'
@@ -341,34 +354,26 @@ export default function App() {
       return;
     }
 
-    // 2. Render Cloud Task State Machine (+ Local Gemini Nano Fallback when offline)
+    // 2. Agentic Browser Execution Loop (silent execution -> verify -> report simple result)
     try {
       setInferencePath('in_cloud');
       setTaskState('PLANNING');
+      setLiveWorkingStatus('Working on your request...');
 
       const taskRes = await RecareApiClient.createTask(
         userInput,
         preferences.interaction_mode,
-        currentCtx
+        currentCtx,
+        (status) => setLiveWorkingStatus(status)
       );
 
       setIsBackendConnected(true);
       setActiveTaskId(taskRes.task_id);
       setTaskState(taskRes.state);
 
-      if (taskRes.message) {
-        addAssistantMessage(
-          taskRes.message,
-          taskRes.message,
-          taskRes.plan,
-          undefined,
-          'in_cloud',
-          'Recare Cloud (Render)'
-        );
-      }
-
       // Check if approval is required before action
       if (taskRes.pending_approval) {
+        setLiveWorkingStatus(null);
         setPendingApproval(taskRes.pending_approval);
         setTaskState('WAITING_FOR_USER_APPROVAL');
         return;
@@ -376,6 +381,7 @@ export default function App() {
 
       // If user disabled auto-approval of safe actions, prompt even for low-risk actions
       if (taskRes.current_action && preferences.auto_approve_low_risk === false) {
+        setLiveWorkingStatus(null);
         setPendingApproval({
           approval_id: crypto.randomUUID(),
           task_id: taskRes.task_id,
@@ -392,12 +398,24 @@ export default function App() {
         return;
       }
 
-      // If action is ready to execute immediately
+      // If action is ready, execute silently & continuously verify until done
       if (taskRes.current_action) {
-        await executeActionCycle(taskRes.task_id, taskRes.current_action);
+        await executeActionCycle(taskRes.task_id, taskRes.current_action, 1);
+      } else {
+        setLiveWorkingStatus(null);
+        if (taskRes.message) {
+          addAssistantMessage(
+            taskRes.message,
+            taskRes.message,
+            undefined,
+            undefined,
+            'in_cloud',
+            'Recare Cloud'
+          );
+        }
       }
     } catch (err: any) {
-      // Automatic fallback to Local Gemini Nano / DOM guidance if Render is unreachable
+      setLiveWorkingStatus(null);
       setIsBackendConnected(false);
       setTaskState('IDLE');
       try {
@@ -417,51 +435,79 @@ export default function App() {
         );
       } catch {
         setInferencePath('idle');
-        addAssistantMessage(`Could not reach Render backend: ${err.message}`);
+        addAssistantMessage(`Could not reach backend: ${err.message}`);
       }
     }
   };
 
-  /** Execute action on webpage and return result to backend */
-  const executeActionCycle = async (taskId: string, action: BrowserAction) => {
+  /** Execute browser action silently, settle DOM/navigation, re-observe, and loop until verified complete */
+  const executeActionCycle = async (taskId: string, action: BrowserAction, depth: number = 1) => {
+    if (depth > 8) {
+      setLiveWorkingStatus(null);
+      setIsExecutingAction(false);
+      setTaskState('COMPLETED');
+      setActiveTaskId(null);
+      addAssistantMessage('I finished the steps I could perform on this page.');
+      return;
+    }
+
     setIsExecutingAction(true);
     setTaskState('EXECUTING');
+    setLiveWorkingStatus(
+      action.reason
+        ? `${action.reason}...`
+        : depth > 1
+        ? `Continuing (step ${depth})...`
+        : 'Performing action...'
+    );
 
     try {
       const actionResult = await MessagingService.executeBrowserAction(action);
       setTaskState('VERIFYING');
+      setLiveWorkingStatus('Verifying result...');
 
-      // Refresh page context after DOM action
-      const updatedContext = await MessagingService.getPageContext();
-      if (updatedContext) {
-        setPageContext(updatedContext);
-      }
+      // Wait for real page navigation / SPA DOM settle, then capture fresh DOM + screenshot
+      await MessagingService.waitForPageSettle();
+      const updatedContext = await refreshPageContext();
 
-      // Step task in backend
+      // Send updated page observation back to agent orchestrator over WebSocket
       const nextTaskState = await RecareApiClient.submitActionResult(
         taskId,
         actionResult,
-        updatedContext || undefined
+        updatedContext || undefined,
+        (status) => setLiveWorkingStatus(status)
       );
 
       setTaskState(nextTaskState.state);
 
-      if (nextTaskState.message) {
-        addAssistantMessage(nextTaskState.message, nextTaskState.message, nextTaskState.plan);
-      }
-
       if (nextTaskState.pending_approval) {
+        setLiveWorkingStatus(null);
         setPendingApproval(nextTaskState.pending_approval);
         setTaskState('WAITING_FOR_USER_APPROVAL');
-      } else if (nextTaskState.current_action && nextTaskState.state !== 'COMPLETED') {
-        // Execute next action in chain
-        await executeActionCycle(taskId, nextTaskState.current_action);
-      } else if (nextTaskState.state === 'COMPLETED') {
+      } else if (nextTaskState.current_action && nextTaskState.state !== 'COMPLETED' && nextTaskState.state !== 'FAILED') {
+        // Continue silent multi-step agent loop
+        await executeActionCycle(taskId, nextTaskState.current_action, depth + 1);
+      } else {
+        setLiveWorkingStatus(null);
         setActiveTaskId(null);
+        if (nextTaskState.state === 'FAILED' && nextTaskState.error) {
+          addAssistantMessage(nextTaskState.error, nextTaskState.error);
+        } else if (nextTaskState.message) {
+          addAssistantMessage(
+            nextTaskState.message,
+            nextTaskState.message,
+            undefined,
+            undefined,
+            'in_cloud',
+            'Recare Agent'
+          );
+        }
       }
     } catch (err: any) {
+      setLiveWorkingStatus(null);
       setTaskState('FAILED');
-      addAssistantMessage(`Action execution failed: ${err.message}`);
+      setActiveTaskId(null);
+      addAssistantMessage(`I ran into an issue completing that: ${err.message}`);
     } finally {
       setIsExecutingAction(false);
     }
@@ -608,6 +654,17 @@ export default function App() {
         onSuggestedAction={handleUserMessage}
         speechRate={preferences.speech_rate}
       />
+
+      {liveWorkingStatus && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mx-3 mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center space-x-2 text-xs font-medium shadow-xs"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-600 animate-ping flex-shrink-0" />
+          <span className="truncate">{liveWorkingStatus}</span>
+        </div>
+      )}
 
       <TaskControls
         state={taskState}
