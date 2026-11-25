@@ -79,7 +79,22 @@ export default function App() {
         setShowOnboarding(true);
       }
 
-      if (savedConvs.length > 0) {
+      // Try to load conversations from server first, fall back to local cache
+      let conversations = savedConvs;
+      try {
+        const serverConvs = await RecareApiClient.fetchConversations();
+        if (serverConvs.length > 0) {
+          conversations = serverConvs;
+          // Update local cache with server data
+          for (const sc of serverConvs.slice(0, 20)) {
+            await StorageService.saveConversation(sc);
+          }
+        }
+      } catch {
+        // Server unavailable — use local cache
+      }
+
+      if (conversations.length > 0) {
         const target = savedActiveId
           ? savedConvs.find((c) => c.id === savedActiveId)
           : savedConvs[0];

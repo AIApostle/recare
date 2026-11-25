@@ -2,6 +2,8 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from app.core.config import settings
 from app.database.base import Base
+import app.models.task  # noqa: F401 – register TaskModel etc.
+import app.models.conversation  # noqa: F401 – register ConversationModel etc.
 
 engine = create_async_engine(
     settings.DATABASE_URL,

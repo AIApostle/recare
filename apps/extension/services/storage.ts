@@ -4,6 +4,7 @@ const PREFERENCES_STORAGE_KEY = 'recare_user_preferences';
 const ONBOARDING_COMPLETED_KEY = 'recare_onboarding_completed';
 const CONVERSATIONS_STORAGE_KEY = 'recare_conversations';
 const ACTIVE_CONVERSATION_KEY = 'recare_active_conversation_id';
+const DEVICE_ID_KEY = 'recare_device_id';
 const MAX_STORED_CONVERSATIONS = 40;
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -49,6 +50,19 @@ async function writeStorage<T>(key: string, value: T): Promise<void> {
 }
 
 export class StorageService {
+  /**
+   * Returns a stable per-installation device ID.
+   * Generated on first run and persisted in extension storage.
+   * Used as X-Device-Id header for per-user conversation isolation on the server.
+   */
+  static async getDeviceId(): Promise<string> {
+    const existing = await readStorage<string>(DEVICE_ID_KEY);
+    if (existing) return existing;
+    const newId = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    await writeStorage(DEVICE_ID_KEY, newId);
+    return newId;
+  }
+
   static async getPreferences(): Promise<UserPreferences> {
     const stored = await readStorage<UserPreferences>(PREFERENCES_STORAGE_KEY);
     return stored ? { ...DEFAULT_PREFERENCES, ...stored } : DEFAULT_PREFERENCES;
@@ -70,7 +84,7 @@ export class StorageService {
     await writeStorage(ONBOARDING_COMPLETED_KEY, completed);
   }
 
-  /** Retrieve all saved conversation threads sorted newest-first */
+  /** Retrieve all saved conversation threads sorted newest-first (local cache) */
   static async getConversations(): Promise<StoredConversation[]> {
     const stored = await readStorage<StoredConversation[]>(CONVERSATIONS_STORAGE_KEY);
     if (!Array.isArray(stored)) return [];

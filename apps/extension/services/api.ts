@@ -4,8 +4,10 @@ import {
   ActionResult,
   ApprovalResponse,
   InteractionMode,
+  StoredConversation,
 } from '../types';
 import { RecareWsClient } from './wsClient';
+import { StorageService } from './storage';
 
 let cachedApiUrl: string | null = null;
 
@@ -258,5 +260,54 @@ export class RecareApiClient {
       throw new Error(`Task cancel error: ${await res.text()}`);
     }
     return res.json();
+  }
+
+  // ─── Conversation Sync (Server-side persistence with per-device isolation) ───
+
+  private static async _deviceHeaders(): Promise<Record<string, string>> {
+    const deviceId = await StorageService.getDeviceId();
+    return { 'Content-Type': 'application/json', 'X-Device-Id': deviceId };
+  }
+
+  /** Fetch all conversations for this device from the server */
+  static async fetchConversations(limit: number = 50): Promise<StoredConversation[]> {
+    try {
+      const baseUrl = await getApiBaseUrl();
+      const headers = await this._deviceHeaders();
+      const res = await fetch(`${baseUrl}/api/v1/conversations?limit=${limit}`, { headers });
+      if (!res.ok) return [];
+      return await res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  /** Sync (upsert) a full conversation to the server */
+  static async syncConversation(conversation: StoredConversation): Promise<void> {
+    try {
+      const baseUrl = await getApiBaseUrl();
+      const headers = await this._deviceHeaders();
+      await fetch(`${baseUrl}/api/v1/conversations`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(conversation),
+      });
+    } catch {
+      // Silently fail — local storage is the primary write path
+    }
+  }
+
+  /** Delete a conversation from the server */
+  static async deleteConversationRemote(conversationId: string): Promise<void> {
+    try {
+      const baseUrl = await getApiBaseUrl();
+      const headers = await this._deviceHeaders();
+      await fetch(`${baseUrl}/api/v1/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {
+      // Silently fail
+    }
   }
 }
