@@ -290,6 +290,32 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
               aria-label="Toggle reduced motion"
             />
           </label>
+
+          {/* Only Use Local Model Toggle */}
+          <label className="flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100/80 rounded-xl border border-zinc-200 cursor-pointer transition-colors">
+            <div className="space-y-0.5 pr-3">
+              <div className="flex items-center space-x-1.5 font-medium text-xs text-zinc-900">
+                <Cpu className="w-3.5 h-3.5 text-zinc-700" />
+                <span>Only Use Local Model</span>
+              </div>
+              <p className="text-[10px] text-zinc-500 leading-normal">
+                {preferences.inference_mode === 'ONLY_ON_DEVICE'
+                  ? 'Active: On-device Gemini Nano only (100% private, no cloud). Uncheck to use both.'
+                  : 'Inactive: Hybrid mode (cloud with local fallback). Check to strictly use local model only.'}
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.inference_mode === 'ONLY_ON_DEVICE'}
+              onChange={(e) =>
+                onUpdate({
+                  inference_mode: e.target.checked ? 'ONLY_ON_DEVICE' : 'PREFER_IN_CLOUD',
+                })
+              }
+              className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+              aria-label="Toggle only use local model"
+            />
+          </label>
         </div>
 
         {/* Local AI Model (Gemini Nano) Setup Link */}

@@ -219,3 +219,89 @@ describe('Conversation Persistence Storage', () => {
     expect(await StorageService.getActiveConversationId()).toBeNull();
   });
 });
+
+describe('On-Device Local Action Planning & ONLY_ON_DEVICE Mode', () => {
+  const sampleContext: PageContext = {
+    url: 'https://example.com/portal',
+    title: 'Recare Accessibility Portal',
+    domain: 'example.com',
+    headings: [{ text: 'Main Services', level: 1 }],
+    interactive_elements: [
+      {
+        element_id: 'elem_form',
+        selector: '#form-link',
+        tag: 'a',
+        text: 'Form Page',
+        accessible_name: 'Open Form Page',
+        role: 'link',
+        is_visible: true,
+        is_enabled: true,
+        bounds: { x: 10, y: 10, width: 100, height: 30 },
+      },
+      {
+        element_id: 'elem_search',
+        selector: 'input#search-input',
+        tag: 'input',
+        text: '',
+        accessible_name: 'Search Documentation',
+        role: 'searchbox',
+        is_visible: true,
+        is_enabled: true,
+        bounds: { x: 10, y: 50, width: 200, height: 30 },
+      },
+    ],
+  };
+
+  it('plans browser-level new tab navigation on-device', async () => {
+    const action = await FirebaseAiService.planLocalAction(
+      'open a new tab in the browser',
+      sampleContext
+    );
+    expect(action).not.toBeNull();
+    expect(action?.type).toBe('NAVIGATE');
+    expect(action?.value).toBe('__NEW_TAB__');
+  });
+
+  it('plans back navigation on-device', async () => {
+    const action = await FirebaseAiService.planLocalAction(
+      'go back to the previous page',
+      sampleContext
+    );
+    expect(action).not.toBeNull();
+    expect(action?.type).toBe('NAVIGATE');
+    expect(action?.value).toBe('__BACK__');
+  });
+
+  it('plans element clicking on-device matching accessible name', async () => {
+    const action = await FirebaseAiService.planLocalAction(
+      'open the form page and click on it',
+      sampleContext
+    );
+    expect(action).not.toBeNull();
+    expect(action?.type).toBe('CLICK');
+    expect(action?.target?.element_id).toBe('elem_form');
+  });
+
+  it('plans on-device search bar filling when search input is visible', async () => {
+    const action = await FirebaseAiService.planLocalAction(
+      'search for something on the search bar maybe social network',
+      sampleContext
+    );
+    expect(action).not.toBeNull();
+    expect(action?.type).toBe('FILL');
+    expect(action?.target?.element_id).toBe('elem_search');
+    expect(action?.value?.toLowerCase()).toContain('social network');
+  });
+
+  it('strictly runs on-device without calling Render cloud in ONLY_ON_DEVICE mode', async () => {
+    const sendChatSpy = vi.spyOn(RecareApiClient, 'sendChat');
+    const res = await FirebaseAiService.explainPageLocally(
+      sampleContext,
+      false,
+      'ONLY_ON_DEVICE',
+      'What can I do here?'
+    );
+    expect(sendChatSpy).not.toHaveBeenCalled();
+    expect(res.inferenceSource).toBe('on_device');
+  });
+});

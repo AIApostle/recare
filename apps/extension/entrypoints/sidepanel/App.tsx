@@ -429,6 +429,89 @@ export default function App() {
     }
 
     // 2. Agentic Browser Execution Loop (silent execution -> verify -> report simple result)
+    // If user selected ONLY_ON_DEVICE: Run purely on-device without cloud calls
+    if (preferences.inference_mode === 'ONLY_ON_DEVICE') {
+      setInferencePath('on_device');
+      setTaskState('PLANNING');
+      setLiveWorkingStatus('Planning on-device...');
+      try {
+        const localAction = await FirebaseAiService.planLocalAction(
+          effectiveRequest,
+          currentCtx
+        );
+
+        if (localAction) {
+          // Check if approval is required before action
+          if (localAction.risk_level === 'HIGH' || preferences.auto_approve_low_risk === false) {
+            setLiveWorkingStatus(null);
+            setPendingApproval({
+              approval_id: crypto.randomUUID(),
+              task_id: 'local-task',
+              action_id: localAction.action_id,
+              action_type: localAction.type,
+              risk_level: localAction.risk_level,
+              target_description:
+                localAction.target?.accessible_name ||
+                localAction.target?.element_id ||
+                'Webpage element',
+              reason: localAction.reason,
+            });
+            setTaskState('WAITING_FOR_USER_APPROVAL');
+            return;
+          }
+
+          setTaskState('EXECUTING');
+          setLiveWorkingStatus(localAction.reason ? `${localAction.reason}...` : 'Performing on-device action...');
+          const execRes = await MessagingService.executeBrowserAction(localAction);
+          setTaskState('VERIFYING');
+          await MessagingService.waitForPageSettle();
+          setTaskState('COMPLETED');
+          setLiveWorkingStatus(null);
+
+          const replyText =
+            localAction.reason ||
+            (execRes.success ? 'Action executed on-device.' : 'Could not complete on-device action.');
+          addAssistantMessage(
+            replyText,
+            replyText,
+            undefined,
+            undefined,
+            'on_device',
+            'Gemini Nano (On-Device)'
+          );
+          return;
+        }
+
+        // If no explicit browser action was resolved, answer via on-device model
+        const localExpl = await FirebaseAiService.explainPageLocally(
+          currentCtx,
+          preferences.simplified_language,
+          'ONLY_ON_DEVICE',
+          effectiveRequest,
+          historyForBackend
+        );
+        setInferencePath(localExpl.inferenceSource);
+        setTaskState('IDLE');
+        setLiveWorkingStatus(null);
+        addAssistantMessage(
+          localExpl.text,
+          localExpl.text,
+          undefined,
+          undefined,
+          localExpl.inferenceSource,
+          localExpl.modelUsed
+        );
+        return;
+      } catch (err: any) {
+        setLiveWorkingStatus(null);
+        setTaskState('IDLE');
+        setInferencePath('idle');
+        addAssistantMessage(`On-device execution issue: ${err.message || String(err)}`);
+        return;
+      }
+    }
+
+    // Hybrid mode: Use Cloud backend with seamless on-device local fallback
     try {
       setInferencePath('in_cloud');
       setTaskState('PLANNING');

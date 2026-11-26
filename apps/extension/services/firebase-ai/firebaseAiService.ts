@@ -297,6 +297,224 @@ export class FirebaseAiService {
   }
 
   /**
+   * Local on-device planner for browser actions when ONLY_ON_DEVICE is selected.
+   * Resolves browser-level actions (tabs, history, reload), element clicking,
+   * form filling, and smart search purely on-device without cloud calls.
+   */
+  static async planLocalAction(
+    userRequest: string,
+    pageContext: PageContext
+  ): Promise<BrowserAction | null> {
+    const raw = userRequest.trim();
+    const lower = raw.toLowerCase();
+
+    // 1. Browser navigation & tab management
+    if (lower.includes('new tab') || lower.includes('open a new tab') || lower.includes('play new tab')) {
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'NAVIGATE',
+        value: '__NEW_TAB__',
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: 'Opening a new tab in your browser',
+      };
+    }
+
+    if (lower.includes('go back') || lower.includes('previous page') || lower === 'back') {
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'NAVIGATE',
+        value: '__BACK__',
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: 'Navigating back to the previous page',
+      };
+    }
+
+    if (lower.includes('go forward') || lower === 'forward') {
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'NAVIGATE',
+        value: '__FORWARD__',
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: 'Navigating forward',
+      };
+    }
+
+    if (lower.includes('reload') || lower.includes('refresh page')) {
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'NAVIGATE',
+        value: '__RELOAD__',
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: 'Reloading the active webpage',
+      };
+    }
+
+    // 2. Search intent
+    if (lower.startsWith('search for ') || lower.includes('search bar') || lower.includes('search on ')) {
+      const searchMatch = raw.match(/search(?:\s+for)?\s+(?:something\s+on\s+the\s+search\s+bar\s+maybe\s+)?(?:maybe\s+)?([^,.]+)/i);
+      const query = searchMatch ? searchMatch[1].replace(/^(?:something\s+on\s+the\s+search\s+bar\s+maybe|maybe)\s+/i, '').trim() : '';
+
+      // Find search input on page if available
+      const searchInput = pageContext.interactive_elements.find(
+        (el) =>
+          el.role === 'searchbox' ||
+          el.input_type === 'search' ||
+          (el.tag === 'input' && (el.accessible_name || el.placeholder || '').toLowerCase().includes('search'))
+      );
+
+      if (searchInput && query) {
+        return {
+          action_id: crypto.randomUUID(),
+          type: 'FILL',
+          target: {
+            element_id: searchInput.element_id,
+            selector: searchInput.selector,
+            accessible_name: searchInput.accessible_name,
+          },
+          value: query,
+          risk_level: 'LOW',
+          requires_approval: false,
+          reason: `Searching for "${query}" on active page`,
+        };
+      }
+
+      if (query) {
+        return {
+          action_id: crypto.randomUUID(),
+          type: 'NAVIGATE',
+          value: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+          options: { url: `https://www.google.com/search?q=${encodeURIComponent(query)}` },
+          risk_level: 'LOW',
+          requires_approval: false,
+          reason: `Searching for "${query}" on Google`,
+        };
+      }
+    }
+
+    // 3. Form filling on-device
+    const fillMatch = raw.match(/(?:fill|type|enter|input)\s+([a-zA-Z0-9_\s]+?)\s+(?:with|as|to|=)\s+([a-zA-Z0-9_@.\s]+)/i);
+    if (fillMatch) {
+      const targetFieldName = fillMatch[1].trim().toLowerCase();
+      const valueToFill = fillMatch[2].trim();
+
+      const inputEl = pageContext.interactive_elements.find((el) => {
+        if (el.tag !== 'input' && el.tag !== 'textarea' && el.role !== 'textbox') return false;
+        const name = (el.accessible_name || el.text || el.placeholder || '').toLowerCase();
+        return name.includes(targetFieldName) || targetFieldName.includes(name);
+      });
+
+      if (inputEl) {
+        return {
+          action_id: crypto.randomUUID(),
+          type: 'FILL',
+          target: {
+            element_id: inputEl.element_id,
+            selector: inputEl.selector,
+            accessible_name: inputEl.accessible_name,
+          },
+          value: valueToFill,
+          risk_level: 'LOW',
+          requires_approval: false,
+          reason: `Entered "${valueToFill}" into ${inputEl.accessible_name || targetFieldName}`,
+        };
+      }
+    }
+
+    // 4. Element clicking or navigation matching
+    const clickIntent =
+      lower.includes('click') ||
+      lower.includes('open') ||
+      lower.includes('press') ||
+      lower.includes('select') ||
+      lower.includes('go to');
+
+    if (clickIntent) {
+      // Clean request words to identify the intended element
+      const cleanReq = lower
+        .replace(/^(can you |please |i want to |could you )/i, '')
+        .replace(/(click on it and open it|click on it|click|open|press|select|go to|the|page|button|link)/gi, ' ')
+        .trim();
+      const keywords = cleanReq.split(/\s+/).filter((w) => w.length > 2);
+
+      if (keywords.length > 0) {
+        // Find best match in interactive elements
+        let bestEl: any = null;
+        let bestScore = 0;
+
+        for (const el of pageContext.interactive_elements) {
+          const name = (el.accessible_name || el.text || el.current_value || '').toLowerCase();
+          const href = (el.href || '').toLowerCase();
+          let score = 0;
+
+          for (const kw of keywords) {
+            if (name === kw) score += 5;
+            else if (name.includes(kw)) score += 3;
+            else if (href.includes(kw)) score += 2;
+          }
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestEl = el;
+          }
+        }
+
+        if (bestEl && bestScore > 0) {
+          return {
+            action_id: crypto.randomUUID(),
+            type: 'CLICK',
+            target: {
+              element_id: bestEl.element_id,
+              selector: bestEl.selector,
+              accessible_name: bestEl.accessible_name || bestEl.text,
+            },
+            risk_level: 'LOW',
+            requires_approval: false,
+            reason: `Opened ${bestEl.accessible_name || bestEl.text || 'selected control'}`,
+          };
+        }
+      }
+    }
+
+    // 5. Try Gemini Nano on-device if available
+    try {
+      const nanoStatus = await NanoDetector.checkAvailability();
+      if (nanoStatus.available && nanoStatus.status === 'ready') {
+        const elementsSummary = pageContext.interactive_elements
+          .slice(0, 10)
+          .map((e) => `[${e.element_id}] ${e.tag} "${e.accessible_name || e.text}"`)
+          .join('\n');
+
+        const prompt = `Webpage elements:\n${elementsSummary}\nUser request: "${userRequest}"\nIf an element matches, reply ONLY with the ID e.g. elem_1. Otherwise reply NONE.`;
+        const nanoReply = await NanoDetector.runLocalPrompt(prompt);
+        const matchId = nanoReply.match(/elem_\d+/i);
+        if (matchId) {
+          const matchedEl = pageContext.interactive_elements.find((e) => e.element_id.toLowerCase() === matchId[0].toLowerCase());
+          if (matchedEl) {
+            return {
+              action_id: crypto.randomUUID(),
+              type: 'CLICK',
+              target: {
+                element_id: matchedEl.element_id,
+                selector: matchedEl.selector,
+                accessible_name: matchedEl.accessible_name || matchedEl.text,
+              },
+              risk_level: 'LOW',
+              requires_approval: false,
+              reason: `Interacted with ${matchedEl.accessible_name || matchedEl.text || 'page element'}`,
+            };
+          }
+        }
+      }
+    } catch {}
+
+    return null;
+  }
+
+  /**
    * Local fallback for action requests when Render cloud backend is unavailable.
    */
   static async planOrAnswerWithLocalFallback(
