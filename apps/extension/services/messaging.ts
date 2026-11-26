@@ -119,9 +119,34 @@ export class MessagingService {
 
   /** Request execution of a browser action */
   static async executeBrowserAction(action: BrowserAction): Promise<ActionResult> {
-    // Handle browser-level history/reload navigation directly via Chrome Tabs API when supported
+    // Handle browser-level history/tabs/reload navigation directly via Chrome Tabs API
     if (action.type === 'NAVIGATE' && typeof chrome !== 'undefined' && chrome.tabs) {
       const tabId = await this.getActiveTabId();
+      if (action.value === '__NEW_TAB__' || action.value?.startsWith('__NEW_TAB__')) {
+        try {
+          const newTabUrl = action.options?.url || 'chrome://newtab';
+          const newTab = await chrome.tabs.create({ url: newTabUrl });
+          return {
+            action_id: action.action_id,
+            success: true,
+            current_url: newTab.url || newTabUrl,
+            observed_changes: { new_tab_opened: true, tab_id: newTab.id },
+          };
+        } catch {
+          try {
+            const fallbackTab = await chrome.tabs.create({ url: 'https://www.google.com' });
+            return {
+              action_id: action.action_id,
+              success: true,
+              current_url: fallbackTab.url || 'https://www.google.com',
+              observed_changes: { new_tab_opened: true },
+            };
+          } catch (err: any) {
+            return { action_id: action.action_id, success: false, error: err.message };
+          }
+        }
+      }
+
       if (tabId) {
         if (action.value === '__BACK__' && typeof chrome.tabs.goBack === 'function') {
           try {
@@ -156,18 +181,70 @@ export class MessagingService {
             return { action_id: action.action_id, success: true };
           } catch {}
         }
+        if (action.value === '__HOME__') {
+          try {
+            const tab = await chrome.tabs.get(tabId);
+            if (tab?.url) {
+              const origin = new URL(tab.url).origin;
+              await chrome.tabs.update(tabId, { url: origin });
+              await this.waitForPageSettle();
+              return {
+                action_id: action.action_id,
+                success: true,
+                current_url: origin,
+                observed_changes: { url_changed: true, navigated: true },
+              };
+            }
+          } catch {}
+        }
       }
     }
 
-    const response = await this.sendToActiveTab({ type: 'EXECUTE_ACTION', action });
-    if (response && response.success && 'result' in response) {
-      return response.result;
+    try {
+      const response = await this.sendToActiveTab({ type: 'EXECUTE_ACTION', action });
+      if (response && response.success && 'result' in response) {
+        return response.result;
+      }
+
+      // Check if error is due to page navigation tearing down the content script
+      const errMsg = response && !response.success ? response.error : '';
+      if (
+        errMsg.includes('message channel closed') ||
+        errMsg.includes('Could not establish connection')
+      ) {
+        // The action triggered a page navigation! Settle and treat as successful navigation
+        await this.waitForPageSettle(3000);
+        const tab = await this.getActiveTab();
+        return {
+          action_id: action.action_id,
+          success: true,
+          current_url: tab?.url,
+          observed_changes: { url_changed: true, page_navigated: true },
+        };
+      }
+
+      return {
+        action_id: action.action_id,
+        success: false,
+        error: errMsg || 'Execution failed',
+      };
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (
+        msg.includes('message channel closed') ||
+        msg.includes('Could not establish connection')
+      ) {
+        await this.waitForPageSettle(3000);
+        const tab = await this.getActiveTab();
+        return {
+          action_id: action.action_id,
+          success: true,
+          current_url: tab?.url,
+          observed_changes: { url_changed: true, page_navigated: true },
+        };
+      }
+      return { action_id: action.action_id, success: false, error: msg };
     }
-    return {
-      action_id: action.action_id,
-      success: false,
-      error: response && !response.success ? response.error : 'Execution failed',
-    };
   }
 
   /** Request highlighting of an element */

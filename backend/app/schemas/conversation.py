@@ -1,8 +1,10 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ConversationMessageSchema(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     sender: str = Field(..., description="'user' or 'assistant'")
     text: str
@@ -11,9 +13,6 @@ class ConversationMessageSchema(BaseModel):
     suggestedActions: Optional[List[str]] = None
     inferenceSource: Optional[str] = None
     modelUsed: Optional[str] = None
-
-    class Config:
-        populate_by_name = True
 
 
 class ConversationResponse(BaseModel):

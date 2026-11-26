@@ -63,6 +63,25 @@ export class DomExtractor {
     if (hint.includes('search')) return 'Search';
     if (hint.includes('close') || hint.includes('dismiss')) return 'Close';
     if (hint.includes('menu') || hint.includes('nav')) return 'Menu';
+    if (hint.includes('home') || hint.includes('logo') || hint.includes('brand')) return 'Home';
+
+    // 6. Child SVG / icon hints
+    const innerSvg = el.querySelector('svg, i');
+    if (innerSvg) {
+      const svgCls = typeof innerSvg.className === 'string' ? innerSvg.className.toLowerCase() : '';
+      const svgAria = innerSvg.getAttribute('aria-label') || '';
+      const svgHint = `${svgCls} ${svgAria}`.toLowerCase();
+      if (svgHint.includes('search')) return 'Search';
+      if (svgHint.includes('close')) return 'Close';
+      if (svgHint.includes('menu')) return 'Menu';
+      if (svgHint.includes('home')) return 'Home';
+    }
+
+    // 7. Check if inside a search form or input named q/s
+    if (el.closest('form[role="search"], form.search-form, form[action*="search" i]')) {
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return 'Search field';
+      if (el.tagName.toLowerCase() === 'button' || el.getAttribute('role') === 'button') return 'Search';
+    }
 
     return '';
   }

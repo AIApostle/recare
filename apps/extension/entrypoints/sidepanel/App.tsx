@@ -167,6 +167,7 @@ export default function App() {
 
     StorageService.saveConversation(record).catch(() => {});
     StorageService.setActiveConversationId(convId).catch(() => {});
+    RecareApiClient.syncConversation(record).catch(() => {});
   }, [messages, activeConversationId, conversationCreatedAt, pageContext?.domain, pageContext?.url]);
 
   const refreshPageContext = async (): Promise<PageContext | null> => {
@@ -282,7 +283,56 @@ export default function App() {
 
     const trimmedInput = userInput.trim().toLowerCase();
 
-    // Explicit action intent check (user wants Recare to operate the browser)
+    let activeMode = preferences.interaction_mode;
+    let effectiveRequest = userInput;
+
+    // Detect in-chat mode switching: e.g. "now you are an auto", "switch to auto", "set mode to guide"
+    const modeSwitchMatch = trimmedInput.match(
+      /(?:switch to|change mode to|set mode to|now you are (?:an? )?|you are in |mode\s*:\s*)(guide|assist|auto(?:nomous)?)/i
+    );
+    if (modeSwitchMatch) {
+      const modeWord = modeSwitchMatch[1].toLowerCase();
+      const newMode: InteractionMode = modeWord.startsWith('auto')
+        ? 'autonomous'
+        : modeWord === 'guide'
+        ? 'guide'
+        : 'assist';
+      activeMode = newMode;
+      await handlePreferencesUpdate({ interaction_mode: newMode });
+
+      // Strip out mode switch prefix so any follow-up command executes immediately
+      // e.g. "okay now you are an auto you can open the front page now" -> "open the front page now"
+      const cleaned = userInput
+        .replace(
+          /(?:okay\s+|ok\s+)?(?:now\s+)?(?:you are\s+(?:an?\s+)?|switch to\s+|set mode to\s+)(?:guide|assist|auto(?:nomous)?)(?:\s+mode)?(?:\s+now)?[\s,.:;]*(?:you can\s+)?/i,
+          ''
+        )
+        .trim();
+      if (cleaned) {
+        effectiveRequest = cleaned;
+      } else {
+        addAssistantMessage(
+          `Switched to ${newMode === 'autonomous' ? 'Auto (Autonomous)' : newMode === 'assist' ? 'Assist' : 'Guide'} mode. ${
+            newMode === 'autonomous'
+              ? 'I will now autonomously execute browser actions like searching, clicking, navigating, and opening tabs for you.'
+              : newMode === 'assist'
+              ? 'I will co-pilot and confirm actions with you.'
+              : 'I will guide, explain, and highlight controls without taking actions.'
+          }`
+        );
+        return;
+      }
+    }
+
+    const effectiveTrimmed = effectiveRequest.trim().toLowerCase();
+
+    // Check if user is asking an explanation / capability question (e.g. "can you explain...", "can it perform...")
+    const isExplanationQuery =
+      /\b(can you explain|explain|can it perform|what is|what are|how do you|how does|what can you do|difference between)\b/i.test(
+        effectiveTrimmed
+      );
+
+    // Explicit action intent check (user wants Recare to operate the browser right now)
     const actionWords = [
       'signin',
       'sign in',
@@ -317,11 +367,15 @@ export default function App() {
       'close',
       'dismiss',
       "didn't",
+      'front page',
+      'new tab',
+      'homepage',
     ];
-    const hasExplicitActionIntent = actionWords.some((w) => trimmedInput.includes(w));
+    const hasExplicitActionIntent =
+      !isExplanationQuery && actionWords.some((w) => effectiveTrimmed.includes(w));
 
     // Conversational / explanation queries go via Firebase hybrid + WebSocket Render Chat
-    const isConversational = !hasExplicitActionIntent || preferences.interaction_mode === 'guide';
+    const isConversational = !hasExplicitActionIntent || activeMode === 'guide';
 
     // 1. Conversational & Page Understanding
     if (isConversational && !hasExplicitActionIntent) {
@@ -335,7 +389,7 @@ export default function App() {
           currentCtx,
           preferences.simplified_language,
           preferences.inference_mode,
-          userInput,
+          effectiveRequest,
           historyForBackend
         );
 
@@ -345,7 +399,7 @@ export default function App() {
         }
 
         // Highlight candidate elements if mentioned in query
-        const words = userInput.toLowerCase().split(/\s+/);
+        const words = effectiveRequest.toLowerCase().split(/\s+/);
         const match = currentCtx.interactive_elements.find((el) => {
           const name = (el.accessible_name || el.text || '').toLowerCase();
           return words.some((w) => w.length > 3 && name.includes(w));
@@ -376,8 +430,8 @@ export default function App() {
       setLiveWorkingStatus('Working on your request...');
 
       const taskRes = await RecareApiClient.createTask(
-        userInput,
-        preferences.interaction_mode,
+        effectiveRequest,
+        activeMode,
         currentCtx,
         (status) => setLiveWorkingStatus(status)
       );
@@ -625,6 +679,7 @@ export default function App() {
       setActiveConversationId(null);
       setConversationCreatedAt(null);
     }
+    await RecareApiClient.deleteConversationRemote(convId);
   };
 
   return (

@@ -217,3 +217,114 @@ def test_websocket_realtime_channel():
             frame2 = ws.receive_json()
             assert frame2["type"] == "chat_response"
             assert "[elem_4]" not in frame2["data"]["reply"]
+
+
+@pytest.mark.asyncio
+async def test_conversations_api_with_device_isolation():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        alice_headers = {"X-Device-Id": "device_alice_123"}
+        bob_headers = {"X-Device-Id": "device_bob_456"}
+
+        # 1. Alice creates/syncs a conversation
+        conv_payload = {
+            "id": "conv_alice_001",
+            "title": "Alice's Search on Nkiri",
+            "domain": "thenkiri.com",
+            "url": "https://thenkiri.com",
+            "createdAt": "2026-11-26T10:00:00Z",
+            "updatedAt": "2026-11-26T10:05:00Z",
+            "messages": [
+                {
+                    "id": "msg_1",
+                    "sender": "user",
+                    "text": "Find movies",
+                    "timestamp": "10:00 AM",
+                },
+                {
+                    "id": "msg_2",
+                    "sender": "assistant",
+                    "text": "I opened the movies section.",
+                    "spoken_text": "I opened the movies section.",
+                    "timestamp": "10:01 AM",
+                },
+            ],
+        }
+        put_res = await client.put("/api/v1/conversations", json=conv_payload, headers=alice_headers)
+        assert put_res.status_code == 200
+        data = put_res.json()
+        assert data["id"] == "conv_alice_001"
+        assert len(data["messages"]) == 2
+
+        # 2. Alice retrieves her conversations
+        alice_list = await client.get("/api/v1/conversations", headers=alice_headers)
+        assert alice_list.status_code == 200
+        alice_convs = alice_list.json()
+        assert len(alice_convs) >= 1
+        assert any(c["id"] == "conv_alice_001" for c in alice_convs)
+
+        # 3. Bob retrieves his conversations -> should be completely isolated (0 of Alice's)
+        bob_list = await client.get("/api/v1/conversations", headers=bob_headers)
+        assert bob_list.status_code == 200
+        bob_convs = bob_list.json()
+        assert not any(c["id"] == "conv_alice_001" for c in bob_convs)
+
+        # 4. Bob cannot get Alice's conversation by ID
+        bob_get = await client.get("/api/v1/conversations/conv_alice_001", headers=bob_headers)
+        assert bob_get.status_code == 404
+
+        # 5. Alice can delete her conversation
+        del_res = await client.delete("/api/v1/conversations/conv_alice_001", headers=alice_headers)
+        assert del_res.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_new_tab_front_page_and_maybe_search_intents():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. New Tab
+        tab_res = await client.post("/api/v1/tasks", json={
+            "user_request": "can you open a new tab",
+            "mode": "autonomous",
+            "page_context": {"url": "https://thenkiri.com", "domain": "thenkiri.com", "title": "Nkiri"},
+        })
+        assert tab_res.status_code == 201
+        tab_data = tab_res.json()
+        assert tab_data["current_action"]["type"] == "NAVIGATE"
+        assert tab_data["current_action"]["value"] == "__NEW_TAB__"
+
+        # 2. Front Page
+        front_res = await client.post("/api/v1/tasks", json={
+            "user_request": "open the front page",
+            "mode": "autonomous",
+            "page_context": {
+                "url": "https://thenkiri.com/series",
+                "domain": "thenkiri.com",
+                "title": "Nkiri Series",
+                "interactive_elements": [
+                    {"element_id": "home_btn", "tag": "a", "accessible_name": "Home", "href": "https://thenkiri.com/"}
+                ],
+            },
+        })
+        assert front_res.status_code == 201
+        front_data = front_res.json()
+        assert front_data["current_action"]["type"] == "CLICK"
+        assert front_data["current_action"]["target"]["element_id"] == "home_btn"
+
+        # 3. "search for something on the search bar maybe social network or" extracts "social network"
+        search_res = await client.post("/api/v1/tasks", json={
+            "user_request": "can you search for something on the search for something on the search bar maybe social network or",
+            "mode": "autonomous",
+            "page_context": {
+                "url": "https://thenkiri.com",
+                "domain": "thenkiri.com",
+                "title": "Nkiri",
+                "interactive_elements": [
+                    {"element_id": "search_input", "tag": "input", "input_type": "search", "placeholder": "Search..."}
+                ],
+            },
+        })
+        assert search_res.status_code == 201
+        s_data = search_res.json()
+        assert s_data["current_action"]["type"] == "FILL"
+        assert "social network" in s_data["current_action"]["value"].lower()

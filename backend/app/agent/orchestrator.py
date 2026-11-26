@@ -29,19 +29,31 @@ class RecareAgentOrchestrator:
     def _extract_search_query(user_request: str) -> str:
         """Extract clean search terms from conversational requests like 'can you search for The Social Network for me'."""
         text = user_request.strip()
+
+        # 1. Handle "maybe <term>" or "like <term>" (e.g. "search for something on the search bar maybe social network or")
+        maybe_m = re.search(
+            r"\b(?:maybe|like)\s+[\"']?([a-zA-Z0-9\s]{2,40}?)[\"']?(?:\s+(?:or|and|please|can you).*)?$",
+            text,
+            re.IGNORECASE,
+        )
+        if maybe_m:
+            candidate = maybe_m.group(1).strip()
+            if candidate and candidate.lower() not in {"something", "it", "this", "that", "anything"}:
+                return candidate
+
         patterns = [
-            r"(?:search\s+for|look\s+up|find\s+me|search|find)\s+[\"']?(.+?)[\"']?(?:\s+(?:can you|please|for me|on this|in the search).*)?$",
+            r"(?:search\s+for|look\s+up|find\s+me|search|find)\s+[\"']?(.+?)[\"']?(?:\s+(?:can you|please|for me|on this|in the search|on the search).*)?$",
         ]
         for pat in patterns:
             m = re.search(pat, text, re.IGNORECASE)
             if m:
                 cleaned = re.sub(
-                    r"\s*(?:can you\s+search.*|please|for me|on this site|on this page|in the search bar).*$",
+                    r"\s*(?:can you\s+search.*|please|for me|on this site|on this page|in the search bar|on the search bar).*$",
                     "",
                     m.group(1),
                     flags=re.IGNORECASE,
                 ).strip(" .?!\"'")
-                if cleaned and cleaned.lower() not in {"it", "that", "something", "this"}:
+                if cleaned and cleaned.lower() not in {"it", "that", "something", "this", "anything"}:
                     return cleaned
         return text
 
@@ -215,7 +227,7 @@ class RecareAgentOrchestrator:
                 user_request=user_request,
                 plan=plan,
                 current_action=action,
-                message="Guide mode active: Explained workflow and highlighted relevant controls.",
+                message="Guide mode is active: I highlight controls without clicking. To have me execute actions or search for you automatically, switch to Assist or Auto mode above.",
                 completion_summary="Guided step provided without executing browser actions.",
             )
 
@@ -518,7 +530,56 @@ class RecareAgentOrchestrator:
 
         req_lower = user_request.lower().strip()
 
-        # 0. Direct Browser-Level Navigation & Scrolling Intents
+        # 0. Direct Browser-Level Navigation, Tabs, & Scrolling Intents
+        if re.search(r"\b(open (?:a )?new tab|new tab|create (?:a )?new tab|play new tab)\b", req_lower):
+            return _build_action_response(
+                BrowserAction(
+                    action_id=f"act_{uuid.uuid4().hex[:8]}",
+                    type=ActionType.NAVIGATE,
+                    value="__NEW_TAB__",
+                    reason="Opening a new browser tab",
+                ),
+                completion_reply="I opened a new tab for you.",
+                target_label="New Tab",
+            )
+
+        if re.search(r"\b(open (?:the )?front page|front page|go to (?:the )?home page|home page|homepage|go home)\b", req_lower):
+            home_el = next(
+                (e for e in elements if (e.get("accessible_name") or e.get("text") or "").strip().lower() in ["home", "front page"]),
+                None,
+            )
+            if not home_el:
+                home_el = next(
+                    (e for e in elements if e.get("href") in ["/", f"https://{ctx.get('domain')}/", f"https://www.{ctx.get('domain')}/"]),
+                    None,
+                )
+            if home_el:
+                return _build_action_response(
+                    BrowserAction(
+                        action_id=f"act_{uuid.uuid4().hex[:8]}",
+                        type=ActionType.CLICK,
+                        target=BrowserActionTarget(
+                            element_id=home_el.get("element_id"),
+                            selector=home_el.get("selector"),
+                            accessible_name="Home",
+                            role=home_el.get("role") or "link",
+                        ),
+                        reason="Navigating to home page",
+                    ),
+                    completion_reply="I opened the front page for you.",
+                    target_label="Home",
+                )
+            return _build_action_response(
+                BrowserAction(
+                    action_id=f"act_{uuid.uuid4().hex[:8]}",
+                    type=ActionType.NAVIGATE,
+                    value="__HOME__",
+                    reason="Navigating to front page",
+                ),
+                completion_reply="I opened the front page for you.",
+                target_label="Front Page",
+            )
+
         if re.search(r"\b(go back|take me back|previous page|navigate back|back page)\b", req_lower) or (
             "didn't" in req_lower and ("back" in req_lower or not elements)
         ):
@@ -711,6 +772,10 @@ class RecareAgentOrchestrator:
         if not candidate_el:
             if "search" in req_lower or "look up" in req_lower or "find" in req_lower:
                 query = self._extract_search_query(user_request)
+                is_generic = (
+                    not query
+                    or query.lower() in {"it", "that", "something", "this", "anything", "stuff", user_request.lower()}
+                )
                 inputs = [
                     e for e in elements
                     if e.get("tag") in ["input", "textarea"]
@@ -726,10 +791,14 @@ class RecareAgentOrchestrator:
                 )
                 if inputs:
                     candidate_el = inputs[0]
-                    action_type = ActionType.FILL
-                    val = query
-                    action_options = {"submit": True, "submit_search": True}
-                    completion_reply = f"Done — I searched for '{query}' for you."
+                    if is_generic:
+                        action_type = ActionType.CLICK
+                        completion_reply = "I opened and focused the search bar for you. What would you like to search for?"
+                    else:
+                        action_type = ActionType.FILL
+                        val = query
+                        action_options = {"submit": True, "submit_search": True}
+                        completion_reply = f"Done — I searched for '{query}' for you."
                 else:
                     # Try opening a search icon/toggle first and queue follow-up search!
                     for el in elements:
@@ -737,8 +806,11 @@ class RecareAgentOrchestrator:
                         if "search" in txt:
                             candidate_el = el
                             action_type = ActionType.CLICK
-                            extra_meta["follow_up_search_query"] = query
-                            completion_reply = f"Done — I searched for '{query}' for you."
+                            if not is_generic:
+                                extra_meta["follow_up_search_query"] = query
+                                completion_reply = f"Done — I searched for '{query}' for you."
+                            else:
+                                completion_reply = "I opened the search bar for you. What would you like to search for?"
                             break
 
             elif any(k in req_lower for k in ["signin", "sign in", "login", "log in", "account"]):
