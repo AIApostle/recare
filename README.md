@@ -50,7 +50,7 @@ Recare utilizes a hybrid visual and semantic screen-reading architecture:
    - This visual representation is passed to Gemini's multimodal vision model, allowing Recare to understand layouts, diagrams, charts, and visual icons that lack explicit text labels.
 4. **Smart Auto-Dismiss Visual Highlighting (`DomHighlighter`)**:
    - When recommending or interacting with controls, Recare displays a high-visibility green border with an accessible label badge over the element.
-   - **Auto-Dismiss Timer**: To prevent screen obstruction, highlights automatically fade out and disappear after **6.5 seconds**, or immediately if you click or type anywhere on the page.
+   - **Auto-Dismiss Timer**: To prevent screen obstruction, highlights automatically fade out and disappear after **20 seconds**, or immediately if you click or type anywhere on the page.
 
 ---
 
@@ -136,58 +136,212 @@ recare/
 
 ---
 
-## Quickstart
+## Step-by-Step Local Setup Guide
 
-### 1. Prerequisites
-- **Node.js** >= 20 LTS (v22.23.5 recommended)
-- **pnpm** >= 12 (`npm install -g pnpm`)
-- **Python** >= 3.11 with **uv** (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+Follow this guide to set up and run Recare entirely on your local machine.
 
-### 2. Install Dependencies
+### 1. System Requirements & Prerequisites
+Before starting, ensure you have the following installed:
+* **Node.js**: Version 20 LTS or higher (`node -v`)
+* **pnpm**: Version 9 or higher (`npm install -g pnpm`)
+* **Python**: Version 3.11 or higher (`python3 --version`)
+* **uv** (recommended Python package manager):
+  ```bash
+  # Linux / macOS
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  # Or via pip
+  pip install uv
+  ```
+* **Google Chrome**: Version 128 or higher (Stable, Beta, or Canary)
+* **Git**: (`git --version`)
+
+---
+
+### 2. Clone the Repository
+Open your terminal and clone the repository:
 ```bash
-# Install frontend workspace dependencies
-pnpm install
+git clone https://github.com/AIApostle/recare.git
+cd recare
+```
 
-# Setup backend Python environment
+---
+
+### 3. Configure Environment Variables
+
+#### A. Backend Environment (`backend/.env`)
+Copy the backend example file:
+```bash
+cp backend/.env.example backend/.env
+```
+Open `backend/.env` in your editor and provide your **Gemini API Key**:
+```env
+# Get a free API key at: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY=your_actual_gemini_api_key_here
+
+# Model settings
+MODEL_PROVIDER=gemini
+MODEL_NAME=gemini-2.5-flash
+
+# Local SQLite Database (auto-generated, zero setup needed)
+DATABASE_URL=sqlite+aiosqlite:///./recare.db
+PORT=8000
+HOST=127.0.0.1
+```
+
+#### B. Extension Environment (`apps/extension/.env`)
+Copy the extension example file:
+```bash
+cp apps/extension/.env.example apps/extension/.env
+```
+For local development, you can point to your local FastAPI backend or keep the default cloud URL:
+```env
+# Point to your local FastAPI backend server:
+VITE_RECARE_API_URL=http://127.0.0.1:8000
+
+# Or point to the live Render cloud deployment:
+# VITE_RECARE_API_URL=https://recare.onrender.com
+
+# Firebase Client Configuration (Pre-configured for testing)
+VITE_FIREBASE_API_KEY=AIzaSyAuWJGDMfc6FYY62wM-oZbjncLESfjVmHg
+VITE_FIREBASE_AUTH_DOMAIN=recare-extension.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=recare-extension
+VITE_FIREBASE_STORAGE_BUCKET=recare-extension.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=489837323041
+VITE_FIREBASE_APP_ID=1:489837323041:web:31b586adceff14f2505460
+VITE_FIREBASE_APPCHECK_DEBUG_TOKEN=B6BF7085-A92B-4710-8F59-490B70F5FCC2
+```
+
+---
+
+### 4. Install Dependencies
+
+Install frontend dependencies from the repository root:
+```bash
+pnpm install
+```
+
+Set up the backend virtual environment:
+```bash
 cd backend
 uv sync
 cd ..
 ```
-
-### 3. Run the Test Suites
+*(Alternative without `uv`)*:
 ```bash
-# Run all test suites (Vitest unit tests + Playwright E2E tests + Pytest backend tests)
-./scripts/test.sh
-
-# Or run individual suites:
-pnpm test:extension   # DOM inspection and action execution unit tests (Vitest)
-pnpm test:e2e         # End-to-end browser tests on Chrome (Playwright)
-pnpm test:backend     # Backend FastAPI and policy engine tests (Pytest)
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cd ..
 ```
 
-### 4. Start Development Services
+---
 
-**Terminal 1 — Backend API:**
+### 5. Start the Local Backend Server
+
+In your first terminal, start the FastAPI agent server:
 ```bash
 pnpm backend:dev
 ```
+*(Or directly from `backend/`: `cd backend && uv run uvicorn app.main:app --reload --port 8000`)*
 
-**Terminal 2 — Local Test Bench Pages:**
+Verify that the backend is running:
 ```bash
-pnpm demo:serve
+curl http://127.0.0.1:8000/health
+# Response: {"status":"healthy"}
 ```
 
-**Terminal 3 — Chrome Extension Build / Watch:**
+---
+
+### 6. Build or Run the Chrome Extension
+
+#### Option A: Production Build (Recommended for first test)
+```bash
+pnpm build:extension
+```
+This generates the unpacked Chrome extension in `apps/extension/.output/chrome-mv3`.
+
+#### Option B: Live Development Mode (Hot-Reloading)
 ```bash
 pnpm dev:extension
 ```
 
-### 5. Load in Chrome
-1. In Google Chrome, go to `chrome://extensions`.
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select `apps/extension/.output/chrome-mv3`.
-4. Navigate to `http://localhost:3000` to access the Recare Test Bench.
-5. Click the Recare toolbar icon or press `Ctrl+Shift+U` to open the Assistant side panel.
+---
+
+### 7. Load the Extension into Google Chrome
+
+1. Open Google Chrome and go to `chrome://extensions`.
+2. Toggle on **Developer mode** in the upper right corner.
+3. Click **Load unpacked** in the top left corner.
+4. Select the directory:
+   ```text
+   <path-to-your-cloned-folder>/recare/apps/extension/.output/chrome-mv3
+   ```
+5. You should now see **Recare — AI Browser Agent** in your list of extensions.
+6. Click the extension puzzle piece icon in your Chrome toolbar and click the **Pin** icon next to Recare.
+
+---
+
+### 8. Start the Local Test Bench (Optional)
+
+In another terminal, start the included local test bench:
+```bash
+pnpm demo:serve
+```
+This serves interactive accessibility test pages at `http://localhost:3000`.
+
+---
+
+### 9. Launching & Testing Recare
+
+1. In Chrome, open any website (e.g. `http://localhost:3000` or `https://en.wikipedia.org`).
+2. Open the Recare side panel by:
+   - Clicking the pinned **Recare icon** in the Chrome toolbar, or
+   - Pressing the accessibility shortcut: `Ctrl+Shift+U` (or `Cmd+Shift+U` on macOS).
+3. Try any of the following interactions:
+   - **Page Understanding**: Ask *"What page are we on right now?"* or *"Summarize this page in plain language."*
+   - **Visual Guidance (Guide Mode)**: Say *"Highlight the search button"* or *"Show me where the submit button is."*
+   - **Form Assistance (Assist / Auto Mode)**: Switch to Assist mode and ask *"Fill out the contact form with sample information."*
+   - **Autonomous Research**: Ask *"Research how renewable energy works and prepare a downloadable document."*
+   - **Voice Interaction**: Click the microphone icon to transcribe speech or send raw voice audio.
+
+---
+
+### 10. Enabling Local Gemini Nano in Chrome (Optional for GPU Systems)
+
+If your computer has a dedicated GPU (NVIDIA, AMD, or Apple Silicon), you can enable Chrome's on-device Gemini Nano:
+1. Open Chrome and navigate to `chrome://flags/#prompt-api-for-gemini-nano`. Set it to **Enabled**.
+2. Navigate to `chrome://flags/#optimization-guide-on-device-model`. Set it to **Enabled BypassPerfRequirement**.
+3. Relaunch Chrome.
+4. Go to `chrome://components`, locate **Optimization Guide On Device Model**, and click **Check for update**.
+5. Once downloaded, Recare will automatically detect and prioritize `⚡ on_device` inference.
+
+> [!NOTE]
+> If your system has no dedicated GPU (CPU-only), Chrome skips on-device Nano to prevent browser lag. Recare automatically handles this: it routes queries through Cloud AI seamlessly with zero manual configuration.
+
+---
+
+### 11. Running the Automated Test Suites
+
+Verify all components are operating correctly:
+```bash
+# Run all test suites:
+./scripts/test.sh
+
+# Or run individual test suites:
+pnpm test:extension   # Vitest unit tests (DOM extraction, action execution, Firebase AI)
+pnpm test:backend     # Pytest backend tests (FastAPI routes, multi-tenancy, safety policies)
+pnpm test:e2e         # Playwright end-to-end browser tests
+```
+
+---
+
+### 12. Troubleshooting & Common Questions
+
+* **Side Panel Won't Open**: Chrome restricts extension side panels on internal `chrome://` and `about:` pages. Open a normal web URL like `http://localhost:3000` or `https://google.com` before clicking the icon.
+* **Microphone Input Not Working**: Click the **"Allow Mic"** button in Recare's voice notice banner, or go to `chrome://settings/content/microphone` to ensure Chrome has microphone access.
+* **Switching Backend URL**: If you want to switch between your local server and the hosted cloud backend, open the **Settings** modal (gear icon at the top of the side panel) and update the backend URL.
+* **Database Reset**: The local SQLite database is stored at `backend/recare.db`. If you ever need a fresh start, simply delete that file and restart the backend.
 
 ---
 
