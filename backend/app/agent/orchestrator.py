@@ -224,11 +224,13 @@ class RecareAgentOrchestrator:
 
         system_instruction = (
             f"You are Recare, an accessibility AI browser assistant. "
-            f"The user is viewing the page '{title}' on domain '{domain}'. "
+            f"The user is currently viewing the page '{title}' on domain '{domain}'. "
+            f"URL: {ctx.get('url', '')}. "
             f"Headings: {h_str}. "
             f"Visible controls: {el_str}. "
             f"{research_context}"
             f"Answer the user's question directly in clear, natural, everyday language. "
+            f"If the user asks what page they are on, what site this is, or where they are, warmly and directly tell them the current page title ('{title}') and website ('{domain}'), and summarize what it is. "
             f"When explaining what a website is about, explain its purpose, key features, and what the user can do there. "
             f"NEVER mention internal IDs like [elem_1] or elem_4, and NEVER refer to the browser extension itself as the webpage."
             + (" Use very simple, plain language." if simplified else "")
