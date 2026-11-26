@@ -9,43 +9,8 @@ export default defineContentScript({
   main() {
     console.log('[Recare] Content script active on:', window.location.href);
 
-    // Trap webpage window.alert to render non-blocking visual toasts and notify Recare
-    try {
-      const script = document.createElement('script');
-      script.textContent = `
-        (function() {
-          if (window.__recare_alert_hooked) return;
-          window.__recare_alert_hooked = true;
-          const origAlert = window.alert;
-          window.alert = function(msg) {
-            const str = String(msg);
-            document.documentElement.setAttribute('data-recare-alert', str);
-            window.dispatchEvent(new CustomEvent('recare-page-alert', { detail: { message: str } }));
-            console.info('[Recare Webpage Alert]:', str);
-            try {
-              let toast = document.getElementById('recare-alert-toast');
-              if (!toast) {
-                toast = document.createElement('div');
-                toast.id = 'recare-alert-toast';
-                toast.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999999;background:#18181b;color:#fff;padding:12px 18px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.3);font-family:system-ui,sans-serif;font-size:13px;font-weight:600;max-width:340px;border-left:4px solid #22c55e;transition:opacity 0.25s;';
-                document.body.appendChild(toast);
-              }
-              toast.textContent = '📢 ' + str;
-              toast.style.display = 'block';
-              toast.style.opacity = '1';
-              setTimeout(() => {
-                if (toast) {
-                  toast.style.opacity = '0';
-                  setTimeout(() => { if (toast) toast.style.display = 'none'; }, 250);
-                }
-              }, 4500);
-            } catch {}
-          };
-        })();
-      `;
-      (document.head || document.documentElement).appendChild(script);
-      script.remove();
-    } catch {}
+    // Content script initialized - standard DOM listeners only (no inline script injection to comply with strict CSP)
+    console.log('[Recare] Content script active on:', window.location.href);
 
     chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
       if (!message || !message.type) return false;

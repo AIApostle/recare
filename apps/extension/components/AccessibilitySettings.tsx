@@ -211,11 +211,37 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
             Assistance & Behavior
           </label>
 
-          {/* Auto-Approve Safe Actions */}
+          {/* Require Action Approval Toggle */}
           <label className="flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100/80 rounded-xl border border-zinc-200 cursor-pointer transition-colors">
             <div className="space-y-0.5 pr-3">
               <div className="flex items-center space-x-1.5 font-medium text-xs text-zinc-900">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Require Approval for Actions</span>
+              </div>
+              <p className="text-[10px] text-zinc-500 leading-normal">
+                Prompts you with an interactive confirmation pop-up before Recare clicks buttons, submits forms, or navigates pages
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.require_action_approval === true || preferences.auto_approve_low_risk === false}
+              onChange={(e) => {
+                const requireApproval = e.target.checked;
+                onUpdate({
+                  require_action_approval: requireApproval,
+                  auto_approve_low_risk: !requireApproval,
+                });
+              }}
+              className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+              aria-label="Toggle require approval for browser actions"
+            />
+          </label>
+
+          {/* Auto-Approve Safe Actions */}
+          <label className="flex items-center justify-between p-3 bg-zinc-50 hover:bg-zinc-100/80 rounded-xl border border-zinc-200 cursor-pointer transition-colors">
+            <div className="space-y-0.5 pr-3">
+              <div className="flex items-center space-x-1.5 font-medium text-xs text-zinc-900">
+                <Activity className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Auto-Approve Safe Navigation</span>
               </div>
               <p className="text-[10px] text-zinc-500 leading-normal">
@@ -224,8 +250,14 @@ export const AccessibilitySettings: React.FC<AccessibilitySettingsProps> = ({
             </div>
             <input
               type="checkbox"
-              checked={preferences.auto_approve_low_risk !== false}
-              onChange={(e) => onUpdate({ auto_approve_low_risk: e.target.checked })}
+              checked={preferences.auto_approve_low_risk !== false && preferences.require_action_approval !== true}
+              onChange={(e) => {
+                const autoApprove = e.target.checked;
+                onUpdate({
+                  auto_approve_low_risk: autoApprove,
+                  require_action_approval: !autoApprove,
+                });
+              }}
               className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
               aria-label="Toggle auto-approve safe actions"
             />

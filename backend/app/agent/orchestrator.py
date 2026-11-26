@@ -682,7 +682,8 @@ class RecareAgentOrchestrator:
         STOP_WORDS = {
             "help", "this", "page", "that", "with", "from", "some", "want", "need",
             "like", "please", "could", "would", "should", "tell", "about", "your",
-            "what", "where", "when", "there", "here", "just", "the", "and", "for", "can", "you"
+            "what", "where", "when", "there", "here", "just", "the", "and", "for", "can", "you",
+            "click", "press", "tap", "open", "select", "button", "link", "tab", "on", "it", "to", "at"
         }
 
         if not has_action_intent and not any(k in req_lower for k in ["fill", "enter", "type", "click"]):
@@ -864,13 +865,29 @@ class RecareAgentOrchestrator:
 
             if not candidate_el:
                 meaningful_words = [w for w in re.findall(r"[a-z0-9]+", req_lower) if len(w) > 2 and w not in STOP_WORDS]
+                best_match = None
+                best_score = 0
                 for el in elements:
-                    txt = f"{el.get('accessible_name', '')} {el.get('text', '')} {el.get('href', '')}".lower()
-                    if any(w in txt for w in meaningful_words):
-                        candidate_el = el
-                        label = el.get("accessible_name") or el.get("text") or "that control"
-                        completion_reply = f"I clicked '{label}' for you."
-                        break
+                    acc_name = (el.get("accessible_name") or el.get("text") or "").strip().lower()
+                    href = (el.get("href") or "").strip().lower()
+                    score = 0
+                    for w in meaningful_words:
+                        if acc_name == w:
+                            score += 10
+                        elif re.search(rf"\b{re.escape(w)}\b", acc_name):
+                            score += 6
+                        elif w in acc_name:
+                            score += 3
+                        elif w in href:
+                            score += 1
+                    if score > best_score:
+                        best_score = score
+                        best_match = el
+
+                if best_match and best_score > 0:
+                    candidate_el = best_match
+                    label = candidate_el.get("accessible_name") or candidate_el.get("text") or "that control"
+                    completion_reply = f"I opened '{label}' for you."
 
         if not candidate_el:
             return TaskResponse(

@@ -172,6 +172,7 @@ export interface UserPreferences {
   reduced_motion: boolean;
   high_contrast: boolean;
   auto_approve_low_risk: boolean;
+  require_action_approval?: boolean;
 }
 
 // Extension Internal Messages

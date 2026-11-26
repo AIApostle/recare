@@ -44,6 +44,7 @@ export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [taskState, setTaskState] = useState<TaskState>('IDLE');
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
+  const [pendingLocalAction, setPendingLocalAction] = useState<BrowserAction | null>(null);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
   const [liveWorkingStatus, setLiveWorkingStatus] = useState<string | null>(null);
 
@@ -480,8 +481,13 @@ export default function App() {
 
         if (localAction) {
           // Check if approval is required before action
-          if (localAction.risk_level === 'HIGH' || preferences.auto_approve_low_risk === false) {
+          if (
+            localAction.risk_level === 'HIGH' ||
+            preferences.require_action_approval ||
+            preferences.auto_approve_low_risk === false
+          ) {
             setLiveWorkingStatus(null);
+            setPendingLocalAction(localAction);
             setPendingApproval({
               approval_id: crypto.randomUUID(),
               task_id: 'local-task',
@@ -576,8 +582,11 @@ export default function App() {
         return;
       }
 
-      // If user disabled auto-approval of safe actions, prompt even for low-risk actions
-      if (taskRes.current_action && preferences.auto_approve_low_risk === false) {
+      // If user enabled require_action_approval or disabled auto_approve_low_risk, prompt for confirmation
+      if (
+        taskRes.current_action &&
+        (preferences.require_action_approval || preferences.auto_approve_low_risk === false)
+      ) {
         setLiveWorkingStatus(null);
         setPendingApproval({
           approval_id: crypto.randomUUID(),
@@ -716,6 +725,37 @@ export default function App() {
     const approvalReq = pendingApproval;
     setPendingApproval(null);
 
+    // If approving a local on-device action
+    if (activeTaskId === 'local-task' && pendingLocalAction) {
+      const act = pendingLocalAction;
+      setPendingLocalAction(null);
+      setTaskState('EXECUTING');
+      setLiveWorkingStatus(act.reason ? `${act.reason}...` : 'Performing on-device action...');
+      try {
+        const execRes = await MessagingService.executeBrowserAction(act);
+        setTaskState('VERIFYING');
+        await MessagingService.waitForPageSettle();
+        setTaskState('COMPLETED');
+        setLiveWorkingStatus(null);
+        const replyText =
+          act.reason ||
+          (execRes.success ? 'Action executed on-device.' : 'Could not complete on-device action.');
+        addAssistantMessage(
+          replyText,
+          replyText,
+          undefined,
+          undefined,
+          'on_device',
+          'Gemini Nano (On-Device)'
+        );
+      } catch (err: any) {
+        setLiveWorkingStatus(null);
+        setTaskState('IDLE');
+        addAssistantMessage(`Execution failed: ${err.message}`);
+      }
+      return;
+    }
+
     try {
       const taskRes = await RecareApiClient.submitApproval(
         activeTaskId,
@@ -737,6 +777,14 @@ export default function App() {
     if (!activeTaskId || !pendingApproval) return;
     const approvalReq = pendingApproval;
     setPendingApproval(null);
+
+    if (activeTaskId === 'local-task') {
+      setPendingLocalAction(null);
+      setTaskState('CANCELLED');
+      setActiveTaskId(null);
+      addAssistantMessage('Action approval was declined. Task cancelled.');
+      return;
+    }
 
     try {
       await RecareApiClient.submitApproval(

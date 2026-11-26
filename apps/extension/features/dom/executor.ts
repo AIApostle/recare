@@ -2,7 +2,7 @@ import { BrowserAction, ActionResult } from '../../types';
 import { DomHighlighter } from './highlighter';
 
 export class DomExecutor {
-  /** Find target element by stable ID, selector, or accessible name */
+  /** Find target element by stable ID, selector, accessible name, or semantic role */
   private static findTargetElement(action: BrowserAction): HTMLElement | null {
     if (action.target?.element_id) {
       const byId = document.querySelector<HTMLElement>(`[data-recare-id="${action.target.element_id}"]`);
@@ -16,16 +16,49 @@ export class DomExecutor {
       } catch {}
     }
 
-    // Fallback: match by accessible name or text content
+    // Fallback: match by accessible name or text content across all interactive elements
     if (action.target?.accessible_name) {
-      const searchName = action.target.accessible_name.toLowerCase();
-      const candidates = Array.from(document.querySelectorAll<HTMLElement>('button, a, input, [role="button"]'));
+      const searchName = action.target.accessible_name.trim().toLowerCase();
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          'button, a, input, select, textarea, [role="button"], [role="link"], [role="menuitem"], [role="tab"], [role="searchbox"], [tabindex="0"], label'
+        )
+      );
+
+      // 1. Exact match on accessible name, aria-label, textContent, or placeholder
       for (const el of candidates) {
-        const text = (el.textContent || el.getAttribute('aria-label') || '').toLowerCase();
-        if (text.includes(searchName)) {
+        const text = (el.textContent || '').trim().toLowerCase();
+        const ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+        const placeholder = (el.getAttribute('placeholder') || '').trim().toLowerCase();
+        const title = (el.getAttribute('title') || '').trim().toLowerCase();
+        if (text === searchName || ariaLabel === searchName || placeholder === searchName || title === searchName) {
           return el;
         }
       }
+
+      // 2. Substring match
+      for (const el of candidates) {
+        const text = (el.textContent || '').trim().toLowerCase();
+        const ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+        const placeholder = (el.getAttribute('placeholder') || '').trim().toLowerCase();
+        const title = (el.getAttribute('title') || '').trim().toLowerCase();
+        if (
+          (text && text.includes(searchName)) ||
+          (ariaLabel && ariaLabel.includes(searchName)) ||
+          (placeholder && placeholder.includes(searchName)) ||
+          (title && title.includes(searchName))
+        ) {
+          return el;
+        }
+      }
+    }
+
+    // Fallback for search input fields when FILL/TYPE or search action is requested
+    if (action.type === 'FILL' || action.type === 'TYPE') {
+      const searchInput = document.querySelector<HTMLElement>(
+        'input[type="search"], input[name*="search" i], input[placeholder*="search" i], input[aria-label*="search" i], [role="searchbox"], input[type="text"], input:not([type])'
+      );
+      if (searchInput) return searchInput;
     }
 
     return null;

@@ -19,6 +19,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   reduced_motion: false,
   high_contrast: false,
   auto_approve_low_risk: true,
+  require_action_approval: false,
 };
 
 async function readStorage<T>(key: string): Promise<T | null> {
