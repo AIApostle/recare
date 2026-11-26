@@ -288,6 +288,23 @@ export default function App() {
 
     const trimmedInput = userInput.trim().toLowerCase();
 
+    // Quick suggestion navigation / settings triggers
+    if (trimmedInput === 'open settings') {
+      setShowSettings(true);
+      return;
+    }
+    if (trimmedInput === 'open local model setup') {
+      setShowLocalModelSetup(true);
+      return;
+    }
+    if (trimmedInput === 'switch to cloud ai') {
+      await handlePreferencesUpdate({ inference_mode: 'PREFER_IN_CLOUD' });
+      addAssistantMessage(
+        'Switched to Hybrid Cloud AI! You can now chat, ask questions, and perform actions freely.'
+      );
+      return;
+    }
+
     let activeMode = preferences.interaction_mode;
     let effectiveRequest = userInput;
 
@@ -413,11 +430,29 @@ export default function App() {
           await MessagingService.highlightElement(match.element_id, match.selector, match.accessible_name);
         }
 
+        const suggestions: string[] = [];
+        if (preferences.inference_mode === 'ONLY_ON_DEVICE') {
+          suggestions.push('Switch to Cloud AI', 'Open Local Model Setup');
+        } else {
+          const hasInputs = currentCtx.interactive_elements.some(
+            (e) => e.tag === 'input' || e.tag === 'textarea' || e.role === 'textbox'
+          );
+          const hasButtons = currentCtx.interactive_elements.some(
+            (e) => e.tag === 'button' || e.role === 'button' || e.tag === 'a'
+          );
+          if (hasButtons) suggestions.push('Highlight key buttons');
+          if (hasInputs) suggestions.push('Help me fill this form');
+          suggestions.push('Explain next step');
+          if (currentCtx.domain.includes('newtab') || currentCtx.interactive_elements.length === 0) {
+            suggestions.push('Open Test Bench');
+          }
+        }
+
         addAssistantMessage(
           aiRes.text,
           aiRes.text,
           undefined,
-          ['Highlight key buttons', 'Help me fill this form', 'Explain next step'],
+          suggestions.slice(0, 3),
           aiRes.inferenceSource,
           aiRes.modelUsed
         );
@@ -497,7 +532,9 @@ export default function App() {
           localExpl.text,
           localExpl.text,
           undefined,
-          undefined,
+          preferences.inference_mode === 'ONLY_ON_DEVICE'
+            ? ['Switch to Cloud AI', 'Open Local Model Setup']
+            : ['Explain next step'],
           localExpl.inferenceSource,
           localExpl.modelUsed
         );

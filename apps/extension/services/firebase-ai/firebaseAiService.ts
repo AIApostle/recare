@@ -281,8 +281,34 @@ export class FirebaseAiService {
       }
     }
 
-    // 4. Final grounded fallback from live DOM context
+    // 4. Grounded fallback / on-device availability notice
     this.activeInferencePath = 'idle';
+
+    if (selectedMode === 'ONLY_ON_DEVICE') {
+      const isGreeting = userMessage
+        ?.trim()
+        .toLowerCase()
+        .match(/^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[!.,\s]*$/i);
+      const greetingPrefix = isGreeting ? 'Hello! ' : '';
+      return {
+        text: `${greetingPrefix}⚠️ **On-device model (Gemini Nano) is currently not active or ready on this system.**\n\nI received your message ("${userMessage?.trim() || 'Help on this page'}"), but **"Only Use Local Model"** is turned on while the local Gemini Nano model is not installed or enabled in Chrome (common on systems without a dedicated GPU).\n\n👉 **To get answers immediately:** Open **Settings** (gear icon) and uncheck **"Only Use Local Model"** to switch to Cloud AI, or click the **"Switch to Cloud AI"** button below.`,
+        inferenceSource: 'on_device',
+        modelUsed: 'Recare On-Device Notice',
+      };
+    }
+
+    const isGreeting = userMessage
+      ?.trim()
+      .toLowerCase()
+      .match(/^(hi|hello|hey|greetings|good morning|good afternoon|good evening)[!.,\s]*$/i);
+    if (isGreeting) {
+      return {
+        text: `Hello! I am Recare, your AI accessibility browser assistant. I am active on **${title}** (${domain}). How can I assist you on this page?`,
+        inferenceSource: 'on_device',
+        modelUsed: 'Recare Assistant Greeting',
+      };
+    }
+
     const keyControls = pageContext.interactive_elements
       .slice(0, 5)
       .map((e) => e.accessible_name || e.text || e.tag)
