@@ -1,17 +1,23 @@
 {
   "buildCommand": null,
   "outputDirectory": "public",
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "rewrites": [
     { "source": "/testbench", "destination": "/index.html" },
     { "source": "/testbench.html", "destination": "/index.html" },
     { "source": "/test-bench", "destination": "/index.html" },
     { "source": "/form", "destination": "/form.html" },
+    { "source": "/form.html", "destination": "/form.html" },
     { "source": "/navigation", "destination": "/navigation.html" },
+    { "source": "/navigation.html", "destination": "/navigation.html" },
     { "source": "/workflow", "destination": "/workflow.html" },
+    { "source": "/workflow.html", "destination": "/workflow.html" },
     { "source": "/dynamic", "destination": "/dynamic.html" },
+    { "source": "/dynamic.html", "destination": "/dynamic.html" },
     { "source": "/inaccessible", "destination": "/inaccessible.html" },
-    { "source": "/injection", "destination": "/injection.html" }
+    { "source": "/inaccessible.html", "destination": "/inaccessible.html" },
+    { "source": "/injection", "destination": "/injection.html" },
+    { "source": "/injection.html", "destination": "/injection.html" }
   ]
 }
