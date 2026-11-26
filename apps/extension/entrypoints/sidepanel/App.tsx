@@ -8,6 +8,7 @@ import {
   UserPreferences,
   StoredConversation,
   ChatMessageItem,
+  GeneratedDocument,
 } from '../../types';
 import { StorageService, DEFAULT_PREFERENCES } from '../../services/storage';
 import { MessagingService } from '../../services/messaging';
@@ -226,7 +227,8 @@ export default function App() {
     plan?: any,
     suggestedActions?: string[],
     inferenceSource?: 'on_device' | 'in_cloud',
-    modelUsed?: string
+    modelUsed?: string,
+    generatedDocument?: GeneratedDocument
   ) => {
     setMessages((prev) => [
       ...prev,
@@ -240,6 +242,7 @@ export default function App() {
         suggestedActions,
         inferenceSource,
         modelUsed,
+        generatedDocument,
       },
     ]);
 
@@ -458,7 +461,8 @@ export default function App() {
           undefined,
           suggestions.slice(0, 3),
           aiRes.inferenceSource,
-          aiRes.modelUsed
+          aiRes.modelUsed,
+          aiRes.generatedDocument
         );
       } catch (err: any) {
         setInferencePath('idle');
@@ -616,7 +620,8 @@ export default function App() {
             undefined,
             undefined,
             'in_cloud',
-            'Recare Cloud'
+            'Recare Cloud',
+            taskRes.generated_document
           );
         }
       }
@@ -705,7 +710,8 @@ export default function App() {
             undefined,
             undefined,
             'in_cloud',
-            'Recare Agent'
+            'Recare Agent',
+            nextTaskState.generated_document
           );
         }
       }

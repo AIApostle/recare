@@ -144,6 +144,74 @@ class RecareAgentOrchestrator:
             "what is this website", "what is this site", "tell me about this site",
             "what is this company", "who is", "what is", "research", "search for", "about this page"
         ])
+
+        # Check if user is asking for research, doc generation, or file preparation
+        is_doc_or_file_request = (
+            any(k in msg_lower for k in ["research", "investigate", "study", "analysis", "deep dive"])
+            and any(k in msg_lower for k in ["doc", "document", "file", "download", "report", "paper", "notes", "write"])
+        ) or any(k in msg_lower for k in [
+            "send me the doc", "send me a doc", "send me the file", "send the file to me",
+            "download it", "generate a doc", "prepare a doc", "create a doc", "create a report"
+        ])
+
+        if is_doc_or_file_request:
+            from app.agent.tools.web_search_tools import search_web_for_information
+            from app.schemas.chat import GeneratedDocument
+            topic = re.sub(
+                r"\b(can you|please|i want to|could you|do a|do|research|about|on|and|send me the doc|send me a doc|send the file to me|send me the file|download it|generate|prepare|create|file|doc|document|notes|report)\b",
+                " ",
+                msg_lower,
+                flags=re.IGNORECASE
+            ).strip()
+            if not topic:
+                topic = title or domain or "Web Topic"
+
+            web_info = ""
+            try:
+                web_info = search_web_for_information(topic)
+            except Exception:
+                pass
+
+            doc_prompt = (
+                f"You are Recare, an autonomous AI research agent.\n"
+                f"Task: Generate a comprehensive, professional, well-structured research document on: '{topic}'.\n"
+                f"Online search findings:\n{web_info or 'Provide exhaustive, accurate knowledge.'}\n\n"
+                f"Structure the document in clean Markdown with:\n"
+                f"# Research Report: {topic.title()}\n"
+                f"## 1. Executive Summary\n"
+                f"## 2. Key Highlights & Findings\n"
+                f"## 3. In-Depth Analysis\n"
+                f"## 4. Key Takeaways & Recommendations\n"
+                f"## 5. Sources & References\n\n"
+                f"Make it high quality, detailed, and directly downloadable."
+            )
+            try:
+                from strands.types.content import Message
+                events = model.stream(messages=[Message(role="user", content=doc_prompt)])
+                chunks = [self._extract_stream_text(ev) async for ev in events]
+                doc_content = "".join(chunks).strip()
+                if doc_content:
+                    clean_slug = re.sub(r"[^a-zA-Z0-9_]+", "_", topic.lower()).strip("_")[:30] or "research"
+                    generated_doc = GeneratedDocument(
+                        title=f"Research Report: {topic.title()}",
+                        filename=f"recare_research_{clean_slug}.md",
+                        content=doc_content,
+                        mime_type="text/markdown",
+                    )
+                    doc_reply = (
+                        f"I have conducted research on **{topic.title()}** and compiled a complete research report for you.\n\n"
+                        f"You can review the key findings and click **Download Document** below to save the file directly to your device."
+                    )
+                    return ChatResponse(
+                        reply=doc_reply,
+                        spoken_summary=doc_reply,
+                        highlight_targets=[],
+                        suggested_actions=["Explain this page", "Help me fill this form"],
+                        generated_document=generated_doc,
+                    )
+            except Exception as e:
+                logger.warning(f"Error generating research doc: {e}")
+
         if is_research_query:
             from app.agent.tools.web_search_tools import search_web_for_information
             search_target = domain.replace("www.", "").split(".")[0] if ("website" in msg_lower or "site" in msg_lower or "company" in msg_lower) else message
@@ -549,6 +617,73 @@ class RecareAgentOrchestrator:
             )
 
         req_lower = user_request.lower().strip()
+
+        # Agentic Web Research & Document Generation Task
+        is_task_research_doc = (
+            any(k in req_lower for k in ["research", "investigate", "study", "analysis", "deep dive"])
+            and any(k in req_lower for k in ["doc", "document", "file", "download", "report", "paper", "notes"])
+        ) or any(k in req_lower for k in ["send me the doc", "send me the file", "download the file", "create a report", "generate a doc"])
+
+        if is_task_research_doc:
+            from app.agent.tools.web_search_tools import search_web_for_information
+            topic = re.sub(
+                r"\b(can you|please|i want to|could you|do a|do|research|about|on|and|send me the doc|send me a doc|send the file to me|send me the file|download it|generate|prepare|create|file|doc|document|notes|report)\b",
+                " ",
+                req_lower,
+                flags=re.IGNORECASE
+            ).strip() or "Research"
+            web_info = ""
+            try:
+                web_info = search_web_for_information(topic)
+            except Exception:
+                pass
+
+            from app.agent.models import get_model
+            model = get_model(settings.MODEL_PROVIDER, settings.MODEL_NAME)
+            doc_prompt = (
+                f"You are Recare, an autonomous AI research agent.\n"
+                f"Task: Generate a comprehensive, professional, well-structured research document on: '{topic}'.\n"
+                f"Online search findings:\n{web_info or 'Provide exhaustive, accurate knowledge.'}\n\n"
+                f"Structure the document in clean Markdown with:\n"
+                f"# Research Report: {topic.title()}\n"
+                f"## 1. Executive Summary\n"
+                f"## 2. Key Highlights & Findings\n"
+                f"## 3. In-Depth Analysis\n"
+                f"## 4. Key Takeaways & Recommendations\n"
+                f"## 5. Sources & References\n\n"
+                f"Make it high quality, detailed, and directly downloadable."
+            )
+            doc_content = ""
+            try:
+                from strands.types.content import Message
+                events = model.stream(messages=[Message(role="user", content=doc_prompt)])
+                doc_content = "".join([self._extract_stream_text(ev) async for ev in events]).strip()
+            except Exception:
+                pass
+
+            if not doc_content:
+                doc_content = f"# Research Report: {topic.title()}\n\n## 1. Executive Summary\nSummary of findings on {topic}.\n\n## 2. Key Findings\n{web_info or 'General knowledge synthesis.'}"
+
+            clean_slug = re.sub(r"[^a-zA-Z0-9_]+", "_", topic.lower()).strip("_")[:30] or "research"
+            gen_doc = {
+                "title": f"Research Report: {topic.title()}",
+                "filename": f"recare_research_{clean_slug}.md",
+                "content": doc_content,
+                "mime_type": "text/markdown",
+            }
+            completion_msg = f"I have conducted research on **{topic.title()}** and compiled your research report. You can download the document below."
+            for p in plan:
+                p.status = "COMPLETED"
+            return TaskResponse(
+                task_id=task_id,
+                state=TaskState.COMPLETED,
+                mode=mode,
+                user_request=user_request,
+                plan=plan,
+                message=completion_msg,
+                completion_summary=completion_msg,
+                generated_document=gen_doc,
+            )
 
         # 0. Direct Browser-Level Navigation, Tabs, & Scrolling Intents
         if re.search(r"\b(open (?:a )?new tab|new tab|create (?:a )?new tab|play new tab)\b", req_lower):

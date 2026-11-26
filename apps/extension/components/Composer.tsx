@@ -194,7 +194,12 @@ export const Composer: React.FC<ComposerProps> = ({
         stream.getTracks().forEach((t) => t.stop());
         setIsRawRecording(false);
         const blob = new Blob(rawChunksRef.current, { type: mimeType });
-        setVoiceNotice('Transcribing audio clip via Cloud AI...');
+        const draftText = input.trim();
+        setInput('');
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+        setVoiceNotice(null);
 
         const reader = new FileReader();
         reader.onload = async () => {
@@ -203,14 +208,32 @@ export const Composer: React.FC<ComposerProps> = ({
             const b64 = dataUrl.split(',')[1] || '';
             const transcript = await RecareApiClient.transcribeAudio(b64, mimeType);
             setVoiceNotice(null);
-            if (transcript.trim()) {
-              setInput(transcript.trim());
-              onSendMessage(transcript.trim());
+            const clean = transcript.trim();
+            if (clean) {
+              const fullMsg = draftText ? `${draftText} ${clean}` : clean;
+              setInput('');
+              if (textareaRef.current) {
+                textareaRef.current.style.height = 'auto';
+              }
+              onSendMessage(fullMsg, attachment || undefined);
+              setAttachment(null);
+            } else if (draftText) {
+              setInput('');
+              onSendMessage(draftText, attachment || undefined);
+              setAttachment(null);
             } else {
               setVoiceNotice('Could not detect clear speech in audio.');
+              setTimeout(() => setVoiceNotice(null), 3000);
             }
           } catch (err: any) {
-            setVoiceNotice(`Audio transcription notice: ${err.message}`);
+            if (draftText) {
+              setInput('');
+              onSendMessage(draftText, attachment || undefined);
+              setAttachment(null);
+            } else {
+              setVoiceNotice(`Audio notice: ${err.message}`);
+              setTimeout(() => setVoiceNotice(null), 3000);
+            }
           }
         };
         reader.readAsDataURL(blob);
@@ -218,7 +241,7 @@ export const Composer: React.FC<ComposerProps> = ({
 
       recorder.start();
       setIsRawRecording(true);
-      setVoiceNotice('Recording raw audio clip... Click mic again to send');
+      setVoiceNotice('Recording voice command... Click mic when done');
     } catch (err: any) {
       setVoiceNotice(`Microphone error: ${err.message}`);
     }
@@ -247,10 +270,12 @@ export const Composer: React.FC<ComposerProps> = ({
           setIsRecording(false);
           isRecordingRef.current = false;
           setVoiceNotice(isLive ? 'Live Voice — Processing...' : null);
-          setTimeout(() => {
-            onSendMessage(clean);
-            setInput('');
-          }, 150);
+          setInput('');
+          if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+          }
+          onSendMessage(clean, attachment || undefined);
+          setAttachment(null);
         }
       },
       (error) => {
@@ -379,7 +404,7 @@ export const Composer: React.FC<ComposerProps> = ({
             Voice Mode
           </div>
 
-          {/* Option 1: Record & Send */}
+          {/* Option 1: Transcribe */}
           <button
             type="button"
             onClick={() => startVoiceMode('single')}
@@ -390,15 +415,15 @@ export const Composer: React.FC<ComposerProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-xs font-semibold text-zinc-900 group-hover:text-emerald-950 truncate">
-                Record & Send
+                Transcribe
               </div>
               <div className="text-[10px] text-zinc-500 leading-tight truncate">
-                Real-time speech recognition
+                Dictate speech to text
               </div>
             </div>
           </button>
 
-          {/* Option 2: Record Raw Audio Clip */}
+          {/* Option 2: Record & Send */}
           <button
             type="button"
             onClick={() => startVoiceMode('raw')}
@@ -409,7 +434,7 @@ export const Composer: React.FC<ComposerProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-xs font-semibold text-zinc-900 group-hover:text-indigo-950 truncate">
-                Record Raw Audio Clip
+                Record & Send
               </div>
               <div className="text-[10px] text-zinc-500 leading-tight truncate">
                 Direct audio to Gemini Cloud AI

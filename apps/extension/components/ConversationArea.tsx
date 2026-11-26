@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChatMessageItem } from '../types';
-import { Bot, Volume2 } from 'lucide-react';
+import { ChatMessageItem, GeneratedDocument } from '../types';
+import { Bot, Volume2, FileText, Download, Copy, Check } from 'lucide-react';
 import { VoiceService } from '../services/voice';
 
 export type { ChatMessageItem };
@@ -17,10 +17,29 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
   speechRate = 1.0,
 }) => {
   const bottomRef = React.useRef<HTMLDivElement>(null);
+  const [copiedDocId, setCopiedDocId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleDownloadDoc = (doc: GeneratedDocument) => {
+    const blob = new Blob([doc.content], { type: doc.mimeType || 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = doc.filename || 'research_report.md';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleCopyDoc = (id: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    setCopiedDocId(id);
+    setTimeout(() => setCopiedDocId(null), 2500);
+  };
 
   return (
     <div
@@ -121,6 +140,57 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
             >
               {msg.text}
             </div>
+
+            {/* Generated Research Document Card from Assistant */}
+            {msg.generatedDocument && (
+              <div className="mt-3 p-3 rounded-xl bg-gradient-to-br from-emerald-50/90 to-teal-50/80 border border-emerald-200/90 shadow-xs space-y-2.5 text-zinc-900">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-xs text-zinc-950 truncate">
+                        {msg.generatedDocument.title}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-mono truncate">
+                        {msg.generatedDocument.filename}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions: Download Document & Copy Text */}
+                <div className="flex items-center gap-2 pt-1 border-t border-emerald-200/60">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadDoc(msg.generatedDocument!)}
+                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download File</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCopyDoc(msg.id, msg.generatedDocument!.content)}
+                    className="py-1.5 px-2.5 rounded-lg bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 text-xs font-medium flex items-center space-x-1.5 transition-all cursor-pointer"
+                  >
+                    {copiedDocId === msg.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700 font-semibold">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-zinc-500" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Suggested Follow-up Actions */}
             {msg.suggestedActions && msg.suggestedActions.length > 0 && (

@@ -118,6 +118,13 @@ export interface ApprovalRequest {
   data_payload?: string;
 }
 
+export interface GeneratedDocument {
+  title: string;
+  filename: string;
+  content: string;
+  mimeType?: string;
+}
+
 export interface TaskResponse {
   task_id: string;
   state: TaskState;
@@ -129,6 +136,7 @@ export interface TaskResponse {
   message?: string;
   completion_summary?: string;
   error?: string;
+  generated_document?: GeneratedDocument;
 }
 
 export interface ChatMessageItem {
@@ -148,6 +156,7 @@ export interface ChatMessageItem {
     name: string;
     previewUrl?: string;
   };
+  generatedDocument?: GeneratedDocument;
 }
 
 export interface StoredConversation {

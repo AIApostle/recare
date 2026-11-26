@@ -21,12 +21,19 @@ class HighlightTarget(BaseModel):
     accessible_name: Optional[str] = Field(None)
     label: Optional[str] = Field(None)
 
+class GeneratedDocument(BaseModel):
+    title: str = Field(..., description="Document title")
+    filename: str = Field(..., description="File name e.g. research_report.md")
+    content: str = Field(..., description="Complete text or markdown content of document")
+    mime_type: str = Field("text/markdown", description="Document MIME type")
+
 class ChatResponse(BaseModel):
     reply: str = Field(..., description="Assistant response text")
     spoken_summary: Optional[str] = Field(None, description="Concise text optimized for text-to-speech audio")
     highlight_targets: List[HighlightTarget] = Field(default_factory=list, description="Elements to visually highlight")
     suggested_actions: List[str] = Field(default_factory=list, description="Recommended next prompts/actions")
     suggested_task: Optional[str] = Field(None, description="Actionable task proposal if user wants execution")
+    generated_document: Optional[GeneratedDocument] = Field(None, description="Synthesized research report or document file")
 
 
 class TranscribeRequest(BaseModel):

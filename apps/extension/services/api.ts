@@ -5,6 +5,7 @@ import {
   ApprovalResponse,
   InteractionMode,
   StoredConversation,
+  GeneratedDocument,
 } from '../types';
 import { RecareWsClient } from './wsClient';
 import { StorageService } from './storage';
@@ -93,6 +94,7 @@ export class RecareApiClient {
     highlight_targets: Array<{ element_id?: string; selector?: string; label?: string }>;
     suggested_actions: string[];
     suggested_task?: string;
+    generated_document?: GeneratedDocument;
   }> {
     try {
       const wsRes = await RecareWsClient.sendRequest<any>(

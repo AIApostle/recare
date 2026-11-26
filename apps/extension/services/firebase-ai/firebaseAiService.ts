@@ -12,7 +12,7 @@ import {
 import { getFirebaseConfig } from './firebaseConfig';
 import { initAppCheck } from './appCheck';
 import { NanoDetector, NanoAvailability } from './nanoDetector';
-import { PageContext, BrowserAction, ActionType } from '../../types';
+import { PageContext, BrowserAction, ActionType, GeneratedDocument } from '../../types';
 import { RecareApiClient } from '../api';
 
 export type SelectedInferenceMode =
@@ -36,6 +36,7 @@ export interface AIExecutionResult {
     name: string;
     args: Record<string, any>;
   }>;
+  generatedDocument?: GeneratedDocument;
 }
 
 // Function Calling Tool Declarations for Firebase AI Cloud Model
@@ -266,6 +267,7 @@ export class FirebaseAiService {
             text: backendRes.reply,
             inferenceSource: 'in_cloud',
             modelUsed: 'Recare Cloud (Render)',
+            generatedDocument: backendRes.generated_document,
           };
         }
       } catch (backendErr: any) {

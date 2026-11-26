@@ -42,3 +42,4 @@ class TaskResponse(BaseModel):
     message: Optional[str] = Field(None, description="Agent explanation or status update message for the user")
     completion_summary: Optional[str] = Field(None, description="Summary when task completes")
     error: Optional[str] = Field(None, description="Error explanation if task failed")
+    generated_document: Optional[Dict[str, Any]] = Field(None, description="Synthesized research report or document file")
