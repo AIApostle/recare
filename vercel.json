@@ -2,5 +2,16 @@
   "buildCommand": null,
   "outputDirectory": "apps/web/public",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/testbench", "destination": "/index.html" },
+    { "source": "/testbench.html", "destination": "/index.html" },
+    { "source": "/test-bench", "destination": "/index.html" },
+    { "source": "/form", "destination": "/form.html" },
+    { "source": "/navigation", "destination": "/navigation.html" },
+    { "source": "/workflow", "destination": "/workflow.html" },
+    { "source": "/dynamic", "destination": "/dynamic.html" },
+    { "source": "/inaccessible", "destination": "/inaccessible.html" },
+    { "source": "/injection", "destination": "/injection.html" }
+  ]
 }

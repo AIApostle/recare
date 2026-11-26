@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Inaccessible Website Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 650px; margin: 40px auto; padding: 20px; }
+    /* Inaccessible pseudo-buttons made of un-semantic divs */
+    .fake-button { display: inline-block; padding: 10px 20px; background: #6b7280; color: white; border-radius: 4px; cursor: pointer; margin: 10px 0; font-weight: bold; }
+    .fake-button:hover { background: #4b5563; }
+    .fake-input { border: 2px solid #9ca3af; padding: 8px; border-radius: 4px; display: block; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <a href="index.html">← Back to Test Bench</a>
+  <h1>Legacy Web Portal (Inaccessible Interface)</h1>
+  <p>This page deliberately avoids semantic HTML5 buttons and ARIA labels. Recare's accessible name calculation and click heuristics are tested here.</p>
+
+  <div>
+    <span>Customer Identifier:</span>
+    <input class="fake-input" placeholder="Customer ID" id="cust-id" />
+  </div>
+
+  <div class="fake-button" tabindex="0" onclick="alert('Export generated!')">
+    Generate Export File
+  </div>
+</body>
+</html>

@@ -328,3 +328,23 @@ async def test_new_tab_front_page_and_maybe_search_intents():
         s_data = search_res.json()
         assert s_data["current_action"]["type"] == "FILL"
         assert "social network" in s_data["current_action"]["value"].lower()
+
+
+@pytest.mark.asyncio
+async def test_testbench_pages_served():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Root testbench
+        res_root = await client.get("/")
+        assert res_root.status_code == 200
+        assert "Recare" in res_root.text
+
+        # /testbench
+        res_tb = await client.get("/testbench/index.html")
+        assert res_tb.status_code == 200
+        assert "Test Bench" in res_tb.text
+
+        # /form
+        res_form = await client.get("/form")
+        assert res_form.status_code == 200
+        assert "Form" in res_form.text

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Controls & Navigation Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; color: #1f2937; }
+    .nav-bar { display: flex; gap: 10px; margin-bottom: 24px; border-bottom: 2px solid #e5e7eb; padding-bottom: 12px; }
+    .tab { padding: 8px 16px; border: none; background: #f3f4f6; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .tab.active { background: #22c55e; color: white; }
+    .panel { display: none; padding: 20px; background: #f9fafb; border-radius: 8px; }
+    .panel.active { display: block; }
+    .btn { padding: 8px 16px; background: #3b82f6; color: white; border-radius: 6px; border: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <a href="index.html">← Back to Test Bench</a>
+  <h1>Navigation and Interactive Controls</h1>
+
+  <div class="nav-bar">
+    <button class="tab active" onclick="switchTab(0)" aria-label="Overview Tab">Overview</button>
+    <button class="tab" onclick="switchTab(1)" aria-label="Transactions Tab">Transactions</button>
+    <button class="tab" onclick="switchTab(2)" aria-label="Settings Tab">Settings</button>
+  </div>
+
+  <div id="panel-0" class="panel active">
+    <h2>Account Overview</h2>
+    <p>Your current account balance is $12,450.00.</p>
+    <button class="btn" id="btn-download-statement" onclick="alert('Statement download initiated.')">Download Latest Statement</button>
+  </div>
+
+  <div id="panel-1" class="panel">
+    <h2>Recent Transactions</h2>
+    <p>3 transactions recorded this month.</p>
+  </div>
+
+  <div id="panel-2" class="panel">
+    <h2>Account Settings</h2>
+    <p>Manage notification and security settings.</p>
+  </div>
+
+  <script>
+    function switchTab(index) {
+      document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === index));
+      document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === index));
+    }
+  </script>
+</body>
+</html>
