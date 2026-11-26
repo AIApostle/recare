@@ -20,6 +20,8 @@ export class VoiceService {
   private static activeSessionToken = 0;
   private static cancelledManually = false;
   private static cachedVoices: SpeechSynthesisVoice[] = [];
+  private static activeUtterance: SpeechSynthesisUtterance | null = null;
+  private static speechHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   /** Initialize Speech Recognition with cross-browser support */
   private static getSpeechRecognition() {
@@ -355,6 +357,11 @@ export class VoiceService {
     const voices = window.speechSynthesis.getVoices();
     if (voices.length > 0) {
       this.cachedVoices = voices;
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        const v = window.speechSynthesis.getVoices();
+        if (v.length > 0) this.cachedVoices = v;
+      };
     }
     return voices;
   }
@@ -371,12 +378,18 @@ export class VoiceService {
       return;
     }
 
-    this.stopSpeaking();
+    // Always ensure synth is unpaused in Chrome
+    try {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch {}
 
     // Clean markdown formatting before speaking
     const cleanText = text
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
-      .replace(/[*_#`]/g, '') // bold/italic/headings/code
+      .replace(/[*_#`~]/g, '') // bold/italic/headings/code
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText) {
@@ -384,27 +397,107 @@ export class VoiceService {
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = Math.max(0.5, Math.min(2.0, speechRate));
-    utterance.lang = 'en-US';
-
-    // Apply voice selection if specified
-    const voices = this.getAvailableVoices();
-    if (preferredVoiceName && voices.length > 0) {
-      const matched = voices.find((v) => v.name === preferredVoiceName || v.voiceURI === preferredVoiceName);
-      if (matched) utterance.voice = matched;
+    // Stop any heartbeat from previous utterance
+    if (this.speechHeartbeatTimer) {
+      clearInterval(this.speechHeartbeatTimer);
+      this.speechHeartbeatTimer = null;
     }
 
-    if (onEnd) {
-      utterance.onend = () => onEnd();
-      utterance.onerror = () => onEnd();
+    const wasSpeaking = window.speechSynthesis.speaking;
+    if (wasSpeaking) {
+      window.speechSynthesis.cancel();
     }
 
-    window.speechSynthesis.speak(utterance);
+    const dispatchSpeak = () => {
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = Math.max(0.5, Math.min(2.0, speechRate));
+        utterance.lang = 'en-US';
+
+        // Retain utterance in static field to protect against V8 garbage collection while speaking
+        this.activeUtterance = utterance;
+
+        // Apply voice selection if specified or choose best English voice
+        let voices = this.getAvailableVoices();
+        if (voices.length === 0 && typeof window.speechSynthesis.getVoices === 'function') {
+          voices = window.speechSynthesis.getVoices();
+          if (voices.length > 0) this.cachedVoices = voices;
+        }
+
+        if (voices.length > 0) {
+          if (preferredVoiceName && preferredVoiceName !== 'neutral') {
+            const matched = voices.find(
+              (v) => v.name === preferredVoiceName || v.voiceURI === preferredVoiceName
+            );
+            if (matched) utterance.voice = matched;
+          }
+          if (!utterance.voice) {
+            const englishVoice =
+              voices.find(
+                (v) =>
+                  v.lang.startsWith('en') &&
+                  (v.name.includes('Natural') || v.name.includes('Google') || v.default)
+              ) || voices.find((v) => v.lang.startsWith('en'));
+            if (englishVoice) utterance.voice = englishVoice;
+          }
+        }
+
+        const finish = () => {
+          if (this.speechHeartbeatTimer) {
+            clearInterval(this.speechHeartbeatTimer);
+            this.speechHeartbeatTimer = null;
+          }
+          this.activeUtterance = null;
+          onEnd?.();
+        };
+
+        utterance.onend = finish;
+        utterance.onerror = (e) => {
+          console.info('[Recare Voice] Speech playback ended or interrupted:', e?.error);
+          finish();
+        };
+
+        // Chromium 15-second pause bug workaround: keep synth alive during long speech
+        this.speechHeartbeatTimer = setInterval(() => {
+          if (!window.speechSynthesis.speaking) {
+            if (this.speechHeartbeatTimer) {
+              clearInterval(this.speechHeartbeatTimer);
+              this.speechHeartbeatTimer = null;
+            }
+            return;
+          }
+          try {
+            window.speechSynthesis.pause();
+            window.speechSynthesis.resume();
+          } catch {}
+        }, 10000);
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn('[Recare Voice] Failed to trigger speech synthesis:', err);
+        onEnd?.();
+      }
+    };
+
+    // If cancel was called, delay slightly so Chrome's audio engine queue clears cleanly
+    if (wasSpeaking) {
+      setTimeout(dispatchSpeak, 40);
+    } else {
+      dispatchSpeak();
+    }
   }
 
   /** Stop any currently playing audio */
   static stopSpeaking(): void {
+    if (this.speechHeartbeatTimer) {
+      clearInterval(this.speechHeartbeatTimer);
+      this.speechHeartbeatTimer = null;
+    }
+    this.activeUtterance = null;
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }

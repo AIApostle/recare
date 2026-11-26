@@ -28,6 +28,8 @@ import { FirebaseAiService, CurrentInferencePath } from '../../services/firebase
 
 export default function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showLocalModelSetup, setShowLocalModelSetup] = useState(false);
@@ -249,14 +251,17 @@ export default function App() {
       }
     };
 
-    const mode = preferences.response_output_mode || 'both';
-    const shouldSpeak = (mode === 'both' || mode === 'voice' || preferences.voice_enabled) && mode !== 'text';
+    const currentPrefs = preferencesRef.current;
+    const mode = currentPrefs.response_output_mode || 'both';
+    const shouldSpeak =
+      (mode === 'both' || mode === 'voice' || currentPrefs.voice_enabled !== false) &&
+      mode !== 'text';
     if (shouldSpeak && (spokenText || text)) {
       VoiceService.speak(
         spokenText || text,
-        preferences.speech_rate,
+        currentPrefs.speech_rate,
         triggerNextLiveListen,
-        preferences.voice_gender !== 'neutral' ? preferences.voice_gender : undefined
+        currentPrefs.voice_gender !== 'neutral' ? currentPrefs.voice_gender : undefined
       );
     } else {
       triggerNextLiveListen();
