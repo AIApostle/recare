@@ -348,3 +348,64 @@ async def test_testbench_pages_served():
         res_form = await client.get("/form")
         assert res_form.status_code == 200
         assert "Form" in res_form.text
+
+
+@pytest.mark.asyncio
+async def test_testbench_real_browser_actions():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Navigation Demo: Download Latest Statement click
+        nav_res = await client.post("/api/v1/tasks", json={
+            "user_request": "click download latest statement",
+            "mode": "autonomous",
+            "page_context": {
+                "url": "https://userecare.vercel.app/navigation.html",
+                "domain": "userecare.vercel.app",
+                "title": "Controls & Navigation Demo",
+                "interactive_elements": [
+                    {"element_id": "btn_stmt", "tag": "button", "accessible_name": "Download Latest Statement", "is_visible": True, "is_enabled": True}
+                ],
+            },
+        })
+        assert nav_res.status_code == 201
+        nav_data = nav_res.json()
+        assert nav_data["current_action"]["type"] == "CLICK"
+        assert nav_data["current_action"]["target"]["element_id"] == "btn_stmt"
+
+        # 2. Inaccessible Demo: Click Generate Export File
+        inacc_res = await client.post("/api/v1/tasks", json={
+            "user_request": "click generate export file",
+            "mode": "autonomous",
+            "page_context": {
+                "url": "https://userecare.vercel.app/inaccessible.html",
+                "domain": "userecare.vercel.app",
+                "title": "Legacy Web Portal",
+                "interactive_elements": [
+                    {"element_id": "div_export", "tag": "div", "role": "button", "accessible_name": "Generate Export File", "is_visible": True, "is_enabled": True}
+                ],
+            },
+        })
+        assert inacc_res.status_code == 201
+        inacc_data = inacc_res.json()
+        assert inacc_data["current_action"]["type"] == "CLICK"
+        assert inacc_data["current_action"]["target"]["element_id"] == "div_export"
+
+        # 3. Workflow Demo: Consequential action confirmation required for Confirm and Pay $99
+        flow_res = await client.post("/api/v1/tasks", json={
+            "user_request": "confirm order and pay $99",
+            "mode": "autonomous",
+            "page_context": {
+                "url": "https://userecare.vercel.app/workflow.html",
+                "domain": "userecare.vercel.app",
+                "title": "Multi-Step Checkout Workflow",
+                "interactive_elements": [
+                    {"element_id": "btn_pay", "tag": "button", "accessible_name": "Confirm and Pay $99", "is_visible": True, "is_enabled": True}
+                ],
+            },
+        })
+        assert flow_res.status_code == 201
+        flow_data = flow_res.json()
+        assert flow_data["state"] == "WAITING_FOR_USER_APPROVAL"
+        assert flow_data["pending_approval"] is not None
+        assert flow_data["pending_approval"]["risk_level"] == "HIGH"
+        assert flow_data["current_action"]["target"]["element_id"] == "btn_pay"

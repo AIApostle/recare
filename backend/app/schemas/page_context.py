@@ -31,6 +31,9 @@ class PageContext(BaseModel):
     main_content_summary: Optional[str] = Field(
         None, description="Summarized visible body text (scripts/styles stripped)"
     )
+    notifications: List[str] = Field(
+        default_factory=list, description="Active status alerts, notices, or toast popups on the page"
+    )
     screenshot_base64: Optional[str] = Field(
         None, description="Base64 encoded JPEG screenshot of the visible tab for visual understanding"
     )

@@ -75,11 +75,19 @@ export class DomExecutor {
 
           // Wait a moment for dynamic page reactions / navigation
           await new Promise((r) => setTimeout(r, 100));
+          const alertMsg = document.documentElement.getAttribute('data-recare-alert');
+          if (alertMsg) {
+            document.documentElement.removeAttribute('data-recare-alert');
+          }
+
           return {
             action_id: action.action_id,
             success: true,
             current_url: window.location.href,
-            observed_changes: { url_changed: window.location.href !== beforeUrl },
+            observed_changes: {
+              url_changed: window.location.href !== beforeUrl,
+              ...(alertMsg ? { popup_alert: alertMsg } : {}),
+            },
           };
         }
 

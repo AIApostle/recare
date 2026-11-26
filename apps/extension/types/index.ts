@@ -49,6 +49,7 @@ export interface PageContext {
   headings: HeadingItem[];
   interactive_elements: ElementMetadata[];
   main_content_summary?: string;
+  notifications?: string[];
   screenshot_base64?: string;
   timestamp?: string;
 }

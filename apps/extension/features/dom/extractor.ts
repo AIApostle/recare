@@ -177,6 +177,29 @@ export class DomExtractor {
     return rawText.replace(/\s+/g, ' ').trim().slice(0, 2500);
   }
 
+  /** Extract active in-page notifications, alerts, or status toasts */
+  private static extractNotifications(): string[] {
+    const list: string[] = [];
+    const lastAlert = document.documentElement.getAttribute('data-recare-alert');
+    if (lastAlert) {
+      list.push(lastAlert);
+    }
+
+    const sel = '.notice, .alert, .notification, [role="alert"], [role="status"], .toast, #success-notice';
+    try {
+      document.querySelectorAll<HTMLElement>(sel).forEach((el) => {
+        if (this.isElementVisible(el)) {
+          const txt = el.textContent?.trim().replace(/\s+/g, ' ');
+          if (txt && !list.includes(txt)) {
+            list.push(txt.slice(0, 250));
+          }
+        }
+      });
+    } catch {}
+
+    return list;
+  }
+
   /** Build structured page context */
   static extractPageContext(): PageContext {
     return {
@@ -186,6 +209,7 @@ export class DomExtractor {
       headings: this.extractHeadings(),
       interactive_elements: this.extractInteractiveElements(),
       main_content_summary: this.extractMainContentSummary(),
+      notifications: this.extractNotifications(),
       timestamp: new Date().toISOString(),
     };
   }
