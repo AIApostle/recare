@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     mode: str = Field("guide", description="guide, assist, autonomous")
     simplified_language: bool = Field(False, description="Whether to simplify explanations for cognitive accessibility")
     conversation_history: Optional[List[ChatMessage]] = Field(default_factory=list)
+    image_base64: Optional[str] = Field(None, description="Base64 encoded image or attachment")
 
 class HighlightTarget(BaseModel):
     element_id: Optional[str] = Field(None)

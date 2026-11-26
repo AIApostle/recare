@@ -85,7 +85,8 @@ export class RecareApiClient {
     mode: InteractionMode = 'guide',
     simplified: boolean = false,
     conversationHistory: Array<{ role: string; content: string }> = [],
-    onStatus?: (statusText: string) => void
+    onStatus?: (statusText: string) => void,
+    imageBase64?: string
   ): Promise<{
     reply: string;
     spoken_summary?: string;
@@ -102,6 +103,7 @@ export class RecareApiClient {
           mode,
           simplified_language: simplified,
           conversation_history: conversationHistory,
+          image_base64: imageBase64,
         },
         onStatus
       );
@@ -118,6 +120,7 @@ export class RecareApiClient {
         mode,
         simplified_language: simplified,
         conversation_history: conversationHistory,
+        image_base64: imageBase64,
       }),
     });
     if (!res.ok) {

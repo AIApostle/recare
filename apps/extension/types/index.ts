@@ -142,6 +142,12 @@ export interface ChatMessageItem {
   suggestedActions?: string[];
   inferenceSource?: 'on_device' | 'in_cloud';
   modelUsed?: string;
+  attachment?: {
+    base64: string;
+    mimeType: string;
+    name: string;
+    previewUrl?: string;
+  };
 }
 
 export interface StoredConversation {

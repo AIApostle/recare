@@ -21,6 +21,7 @@ async def chat(
         mode=payload.mode,
         simplified=payload.simplified_language,
         conversation_history=history,
+        image_base64=payload.image_base64,
     )
 
 

@@ -18,7 +18,7 @@ import { InteractionModeSelector } from '../../components/InteractionModeSelecto
 import { ConversationArea } from '../../components/ConversationArea';
 import { ApprovalPrompt } from '../../components/ApprovalPrompt';
 import { TaskControls } from '../../components/TaskControls';
-import { Composer } from '../../components/Composer';
+import { Composer, FileAttachment } from '../../components/Composer';
 import { AccessibilitySettings } from '../../components/AccessibilitySettings';
 import { OnboardingModal } from '../../components/OnboardingModal';
 import { TaskHistory } from '../../components/TaskHistory';
@@ -206,7 +206,7 @@ export default function App() {
     );
   };
 
-  const addUserMessage = (text: string) => {
+  const addUserMessage = (text: string, attachment?: FileAttachment) => {
     setMessages((prev) => [
       ...prev,
       {
@@ -214,6 +214,7 @@ export default function App() {
         sender: 'user',
         text,
         timestamp: new Date().toLocaleTimeString(),
+        attachment,
       },
     ]);
   };
@@ -268,14 +269,14 @@ export default function App() {
     }
   };
 
-  /** Handle user prompt input (text or speech) */
-  const handleUserMessage = async (userInput: string) => {
+  /** Handle user prompt input (text, speech, or file attachment) */
+  const handleUserMessage = async (userInput: string, attachment?: FileAttachment) => {
     const historyForBackend = messages.slice(-10).map((m) => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       content: m.text,
     }));
 
-    addUserMessage(userInput);
+    addUserMessage(userInput, attachment);
     const liveCtx = await refreshPageContext();
 
     const currentCtx = liveCtx || pageContext || {
@@ -348,9 +349,10 @@ export default function App() {
 
     const effectiveTrimmed = effectiveRequest.trim().toLowerCase();
 
-    // Check if user is asking an explanation / capability question (e.g. "can you explain...", "can it perform...")
+    // Check if user is asking an explanation / capability question (e.g. "what is this website about", "can you explain...", "research X")
     const isExplanationQuery =
-      /\b(can you explain|explain|can it perform|what is|what are|how do you|how does|what can you do|difference between)\b/i.test(
+      Boolean(attachment) ||
+      /\b(what is this website|what does this website|tell me about this website|what is this site|what does this site|what is this company|about this page|who is|research|can you explain|explain|can it perform|what is|what are|how do you|how does|what can you do|difference between)\b/i.test(
         effectiveTrimmed
       );
 
@@ -412,7 +414,8 @@ export default function App() {
           preferences.simplified_language,
           preferences.inference_mode,
           effectiveRequest,
-          historyForBackend
+          historyForBackend,
+          attachment?.base64
         );
 
         setInferencePath(aiRes.inferenceSource);

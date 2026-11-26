@@ -96,6 +96,23 @@ export const ConversationArea: React.FC<ConversationAreaProps> = ({
               )}
             </div>
 
+            {/* Optional Attached Image / Document Preview */}
+            {msg.attachment && (
+              <div className="mb-2 rounded-xl overflow-hidden border border-zinc-200/60 bg-zinc-50/50">
+                {msg.attachment.mimeType?.startsWith('image/') || msg.attachment.previewUrl ? (
+                  <img
+                    src={msg.attachment.previewUrl || `data:${msg.attachment.mimeType || 'image/jpeg'};base64,${msg.attachment.base64}`}
+                    alt={msg.attachment.name || 'Attached image'}
+                    className="max-h-48 w-auto rounded-lg object-contain"
+                  />
+                ) : (
+                  <div className="p-2 flex items-center space-x-2 text-xs text-zinc-700">
+                    <span className="font-semibold text-[11px] truncate">{msg.attachment.name}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Message Body with Guaranteed Screen Wrapping */}
             <div
               className={`whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] font-normal leading-relaxed ${

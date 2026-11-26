@@ -117,6 +117,7 @@ class RecareAgentOrchestrator:
         mode: str = "guide",
         simplified: bool = False,
         conversation_history: Optional[List[Dict[str, Any]]] = None,
+        image_base64: Optional[str] = None,
     ) -> ChatResponse:
         """Process an interactive chat or page question with live AI inference."""
         ctx = page_context or {}
@@ -136,17 +137,36 @@ class RecareAgentOrchestrator:
             [e.get("accessible_name") or e.get("text") or "" for e in elements[:12] if (e.get("accessible_name") or e.get("text"))]
         )
 
+        # Dynamic online background research if user asks about the website or an entity/topic
+        msg_lower = message.lower()
+        research_context = ""
+        is_research_query = any(k in msg_lower for k in [
+            "what is this website", "what is this site", "tell me about this site",
+            "what is this company", "who is", "what is", "research", "search for", "about this page"
+        ])
+        if is_research_query:
+            from app.agent.tools.web_search_tools import search_web_for_information
+            search_target = domain.replace("www.", "").split(".")[0] if ("website" in msg_lower or "site" in msg_lower or "company" in msg_lower) else message
+            try:
+                web_info = search_web_for_information(search_target)
+                if web_info and not web_info.startswith("Web search results for"):
+                    research_context = f"\nOnline Research & Background Data:\n{web_info}\n"
+            except Exception:
+                pass
+
         system_instruction = (
             f"You are Recare, an accessibility AI browser assistant. "
             f"The user is viewing the page '{title}' on domain '{domain}'. "
             f"Headings: {h_str}. "
             f"Visible controls: {el_str}. "
+            f"{research_context}"
             f"Answer the user's question directly in clear, natural, everyday language. "
+            f"When explaining what a website is about, explain its purpose, key features, and what the user can do there. "
             f"NEVER mention internal IDs like [elem_1] or elem_4, and NEVER refer to the browser extension itself as the webpage."
             + (" Use very simple, plain language." if simplified else "")
         )
 
-        screenshot_b64 = ctx.get("screenshot_base64")
+        screenshot_b64 = image_base64 or ctx.get("screenshot_base64")
         try:
             from strands.types.content import Message
             stream_messages: List[Any] = []

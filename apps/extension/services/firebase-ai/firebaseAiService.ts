@@ -156,7 +156,8 @@ export class FirebaseAiService {
     simplified: boolean = false,
     selectedMode: SelectedInferenceMode = 'PREFER_IN_CLOUD',
     userMessage?: string,
-    conversationHistory: Array<{ role: string; content: string }> = []
+    conversationHistory: Array<{ role: string; content: string }> = [],
+    imageBase64?: string
   ): Promise<AIExecutionResult> {
     await this.initialize();
 
@@ -212,7 +213,8 @@ export class FirebaseAiService {
           },
         });
 
-        const result = await model.generateContent(promptBody);
+        const contents: any = promptBody;
+        const result = await model.generateContent(contents);
         const rawText = result.response.text()?.trim();
         const text = rawText ? rawText.replace(/\[?elem_\d+\]?\s*/gi, '').trim() : '';
         if (text) {
@@ -241,13 +243,23 @@ export class FirebaseAiService {
     // 2. Fallback to Render Cloud Agent when Firebase AI client call isn't active/reachable
     if (selectedMode !== 'ONLY_ON_DEVICE') {
       try {
-        const backendRes = await RecareApiClient.sendChat(
-          chatMessage,
-          pageContext,
-          'guide',
-          simplified,
-          conversationHistory
-        );
+        const backendRes = imageBase64
+          ? await RecareApiClient.sendChat(
+              chatMessage,
+              pageContext,
+              'guide',
+              simplified,
+              conversationHistory,
+              undefined,
+              imageBase64
+            )
+          : await RecareApiClient.sendChat(
+              chatMessage,
+              pageContext,
+              'guide',
+              simplified,
+              conversationHistory
+            );
         if (backendRes?.reply && !backendRes.reply.includes('AI model is currently not available')) {
           this.activeInferencePath = 'in_cloud';
           return {
