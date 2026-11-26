@@ -31,6 +31,34 @@ Recare is powered by a **Hybrid AI Architecture**: combining on-device **Gemini 
 
 ---
 
+## Firebase AI Logic & Hybrid AI Architecture
+
+Recare was architected specifically for Google's **#BuildHybridAI** challenge to bridge on-device privacy with cloud reasoning.
+
+### Where Firebase AI Logic is Implemented:
+* **Core Service (`apps/extension/services/firebase-ai/firebaseAiService.ts`)**:
+  - Initializes Firebase AI (`getAI`, `GoogleAIBackend`) with Google AI credentials.
+  - Configures multi-tier inference modes: `InferenceMode.ONLY_ON_DEVICE`, `InferenceMode.PREFER_ON_DEVICE`, and `InferenceMode.PREFER_IN_CLOUD`.
+  - Defines browser agent function-calling schemas (`RECARE_BROWSER_TOOLS` for `inspect_page`, `highlight_element`, `click_element`, `fill_input`, `navigate_page`, `scroll_page`).
+* **Prompt API & On-Device Detection (`apps/extension/services/firebase-ai/nanoDetector.ts`)**:
+  - Queries Chrome's built-in AI runtime across W3C standard `LanguageModel` and `window.ai.languageModel`.
+  - Tracks availability states (`readily`, `downloadable`, `downloading`, `unsupported`).
+* **Firebase App Check (`apps/extension/services/firebase-ai/appCheck.ts`)**:
+  - Protects AI logic endpoints with App Check token attestation.
+* **On-Device Planner (`FirebaseAiService.planLocalAction`)**:
+  - Resolves browser-level actions (tabs, history, reload, forms, search) entirely in-browser when running on-device.
+
+### What Happens Based on User Hardware (GPU vs. CPU):
+
+| Hardware Profile | What Chrome Does | How Recare Executes | User Experience |
+| :--- | :--- | :--- | :--- |
+| **System WITH Dedicated GPU** *(NVIDIA / AMD / Apple Silicon)* | Downloads and loads Gemini Nano model weights into GPU memory via Chrome Prompt API (`#prompt-api-for-gemini-nano`). | Runs directly on-device using local Gemini Nano (`⚡ on_device`). No webpage data or DOM is sent to any server. | Instant, zero-latency inference, 100% offline and private. |
+| **System WITHOUT GPU** *(CPU-only Linux / laptops with basic integrated graphics)* | Chrome withholds the on-device execution config to prevent freezing the browser thread (reports missing execution config). | Recare's `NanoDetector` automatically detects the missing GPU runtime and seamlessly routes queries through **Firebase AI Cloud Backend** (Gemini 2.5 on Render). | Fast, full-capability agent execution. Every click, voice response, and form fill works identically with zero crashes or stalls. |
+
+*Users can also toggle **"Only Use Local Model"** in Recare's Accessibility Settings to force strict on-device operation, or leave it unchecked for automatic hybrid switching.*
+
+---
+
 ## Monorepo Architecture
 
 ```text
