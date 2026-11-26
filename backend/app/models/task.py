@@ -8,6 +8,7 @@ class TaskModel(Base, TimestampMixin):
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     user_request: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(String(50), nullable=False, default="IDLE")
     mode: Mapped[str] = mapped_column(String(20), nullable=False, default="assist")  # guide, assist, autonomous

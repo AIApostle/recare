@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, List
 import asyncio
 import json
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 from app.database.session import get_db
@@ -26,23 +26,40 @@ class ApprovalPayload(BaseModel):
     page_context: Optional[PageContext] = None
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-async def create_task(payload: TaskCreate, db: AsyncSession = Depends(get_db)):
-    """Create and start a new Recare task."""
+async def create_task(
+    payload: TaskCreate,
+    x_device_id: Optional[str] = Header(None, alias="X-Device-Id"),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-Id"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create and start a new Recare task with multi-tenant device isolation."""
+    if not payload.tenant_id:
+        payload.tenant_id = x_device_id or x_tenant_id
     return await TaskService.create_task(db, payload)
 
 @router.get("", response_model=List[TaskResponse])
 async def list_tasks(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    tenant_id: Optional[str] = Query(None),
+    x_device_id: Optional[str] = Header(None, alias="X-Device-Id"),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-Id"),
     db: AsyncSession = Depends(get_db),
 ):
-    """List recent tasks for history and auditing."""
-    return await TaskService.list_tasks(db, limit=limit, offset=offset)
+    """List recent tasks for history and auditing with multi-tenant isolation."""
+    resolved_tenant = tenant_id or x_device_id or x_tenant_id
+    return await TaskService.list_tasks(db, limit=limit, offset=offset, tenant_id=resolved_tenant)
 
 @router.get("/{task_id}", response_model=TaskResponse)
-async def get_task(task_id: str, db: AsyncSession = Depends(get_db)):
-    """Retrieve task state and progress."""
-    task = await TaskService.get_task(db, task_id)
+async def get_task(
+    task_id: str,
+    x_device_id: Optional[str] = Header(None, alias="X-Device-Id"),
+    x_tenant_id: Optional[str] = Header(None, alias="X-Tenant-Id"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve task state and progress with tenant check."""
+    resolved_tenant = x_device_id or x_tenant_id
+    task = await TaskService.get_task(db, task_id, tenant_id=resolved_tenant)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task

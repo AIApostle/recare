@@ -353,10 +353,10 @@ export default function App() {
 
     const effectiveTrimmed = effectiveRequest.trim().toLowerCase();
 
-    // Check if user is asking an explanation / capability question (e.g. "what is this website about", "can you explain...", "research X")
+    // Check if user is asking an explanation / capability question (e.g. "what is this website about", "what page are we on", "can you explain...", "research X")
     const isExplanationQuery =
       Boolean(attachment) ||
-      /\b(what is this website|what does this website|tell me about this website|what is this site|what does this site|what is this company|about this page|who is|research|can you explain|explain|can it perform|what is|what are|how do you|how does|what can you do|difference between)\b/i.test(
+      /\b(what is this website|what does this website|tell me about this website|what is this site|what does this site|what is this company|what page are we on|what page is this|where are we|what site is this|about this page|who is|research|can you explain|explain|can it perform|what is|what are|how do you|how does|what can you do|difference between)\b/i.test(
         effectiveTrimmed
       );
 
@@ -484,24 +484,26 @@ export default function App() {
         );
 
         if (localAction) {
-          // Check if approval is required before action
+          // Check if approval is required before action (HIGHLIGHT is non-destructive guidance and never blocked)
           if (
-            localAction.risk_level === 'HIGH' ||
-            preferences.require_action_approval ||
-            preferences.auto_approve_low_risk === false
+            localAction.type !== 'HIGHLIGHT' &&
+            (localAction.risk_level === 'HIGH' ||
+              preferences.require_action_approval ||
+              preferences.auto_approve_low_risk === false)
           ) {
             setLiveWorkingStatus(null);
             setPendingLocalAction(localAction);
+            const targetName =
+              localAction.target?.accessible_name ||
+              (localAction.reason?.match(/(?:highlighting|for|on|into|to|with)\s+['"]?([^'"]+)['"]?/i)?.[1]) ||
+              'Webpage element';
             setPendingApproval({
               approval_id: crypto.randomUUID(),
               task_id: 'local-task',
               action_id: localAction.action_id,
               action_type: localAction.type,
               risk_level: localAction.risk_level,
-              target_description:
-                localAction.target?.accessible_name ||
-                localAction.target?.element_id ||
-                'Webpage element',
+              target_description: targetName.replace(/\[?elem_\d+\]?/gi, '').trim() || 'Webpage control',
               reason: localAction.reason,
             });
             setTaskState('WAITING_FOR_USER_APPROVAL');
@@ -586,22 +588,24 @@ export default function App() {
         return;
       }
 
-      // If user enabled require_action_approval or disabled auto_approve_low_risk, prompt for confirmation
+      // If user enabled require_action_approval or disabled auto_approve_low_risk, prompt for confirmation (HIGHLIGHT is visual guidance and never blocked)
       if (
         taskRes.current_action &&
+        taskRes.current_action.type !== 'HIGHLIGHT' &&
         (preferences.require_action_approval || preferences.auto_approve_low_risk === false)
       ) {
         setLiveWorkingStatus(null);
+        const targetName =
+          taskRes.current_action.target?.accessible_name ||
+          taskRes.current_action.reason?.match(/(?:highlighting|for|on|into|to|with)\s+['"]?([^'"]+)['"]?/i)?.[1] ||
+          'Webpage control';
         setPendingApproval({
           approval_id: crypto.randomUUID(),
           task_id: taskRes.task_id,
           action_id: taskRes.current_action.action_id,
           action_type: taskRes.current_action.type,
           risk_level: taskRes.current_action.risk_level,
-          target_description:
-            taskRes.current_action.target?.accessible_name ||
-            taskRes.current_action.target?.element_id ||
-            'Webpage element',
+          target_description: targetName.replace(/\[?elem_\d+\]?/gi, '').trim() || 'Webpage control',
           reason: taskRes.current_action.reason,
         });
         setTaskState('WAITING_FOR_USER_APPROVAL');
@@ -694,6 +698,26 @@ export default function App() {
       if (nextTaskState.pending_approval) {
         setLiveWorkingStatus(null);
         setPendingApproval(nextTaskState.pending_approval);
+        setTaskState('WAITING_FOR_USER_APPROVAL');
+      } else if (
+        nextTaskState.current_action &&
+        nextTaskState.current_action.type !== 'HIGHLIGHT' &&
+        (preferences.require_action_approval || preferences.auto_approve_low_risk === false)
+      ) {
+        setLiveWorkingStatus(null);
+        const targetName =
+          nextTaskState.current_action.target?.accessible_name ||
+          nextTaskState.current_action.reason?.match(/(?:highlighting|for|on|into|to|with)\s+['"]?([^'"]+)['"]?/i)?.[1] ||
+          'Webpage control';
+        setPendingApproval({
+          approval_id: crypto.randomUUID(),
+          task_id: taskId,
+          action_id: nextTaskState.current_action.action_id,
+          action_type: nextTaskState.current_action.type,
+          risk_level: nextTaskState.current_action.risk_level,
+          target_description: targetName.replace(/\[?elem_\d+\]?/gi, '').trim() || 'Webpage control',
+          reason: nextTaskState.current_action.reason,
+        });
         setTaskState('WAITING_FOR_USER_APPROVAL');
       } else if (nextTaskState.current_action && nextTaskState.state !== 'COMPLETED' && nextTaskState.state !== 'FAILED') {
         // Continue silent multi-step agent loop

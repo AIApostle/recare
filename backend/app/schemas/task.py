@@ -30,9 +30,11 @@ class TaskCreate(BaseModel):
     user_request: str = Field(..., min_length=1, description="Natural language goal or question")
     mode: str = Field("assist", description="Interaction mode: guide, assist, autonomous")
     page_context: Optional[PageContext] = Field(None, description="Initial active page context")
+    tenant_id: Optional[str] = Field(None, description="Stable device or user tenant ID for multi-tenant isolation")
 
 class TaskResponse(BaseModel):
     task_id: str = Field(..., description="Unique task identifier")
+    tenant_id: Optional[str] = Field(None, description="Stable device or user tenant ID")
     state: TaskState = Field(..., description="Current state machine status")
     mode: str = Field(..., description="Active interaction mode")
     user_request: str = Field(..., description="Original user request")

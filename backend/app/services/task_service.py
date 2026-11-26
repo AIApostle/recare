@@ -28,6 +28,7 @@ class TaskService:
 
         task_record = TaskModel(
             id=task_id,
+            tenant_id=payload.tenant_id,
             user_request=payload.user_request,
             state=response.state.value,
             mode=payload.mode,
@@ -44,14 +45,20 @@ class TaskService:
         return response
 
     @staticmethod
-    async def list_tasks(db: AsyncSession, limit: int = 20, offset: int = 0) -> List[TaskResponse]:
+    async def list_tasks(
+        db: AsyncSession, limit: int = 20, offset: int = 0, tenant_id: Optional[str] = None
+    ) -> List[TaskResponse]:
+        query = select(TaskModel)
+        if tenant_id:
+            query = query.where(TaskModel.tenant_id == tenant_id)
         result = await db.execute(
-            select(TaskModel).order_by(TaskModel.created_at.desc()).limit(limit).offset(offset)
+            query.order_by(TaskModel.created_at.desc()).limit(limit).offset(offset)
         )
         tasks = result.scalars().all()
         return [
             TaskResponse(
                 task_id=t.id,
+                tenant_id=t.tenant_id,
                 state=TaskState(t.state),
                 mode=t.mode,
                 user_request=t.user_request,
@@ -63,14 +70,20 @@ class TaskService:
         ]
 
     @staticmethod
-    async def get_task(db: AsyncSession, task_id: str) -> Optional[TaskResponse]:
-        result = await db.execute(select(TaskModel).where(TaskModel.id == task_id))
+    async def get_task(
+        db: AsyncSession, task_id: str, tenant_id: Optional[str] = None
+    ) -> Optional[TaskResponse]:
+        query = select(TaskModel).where(TaskModel.id == task_id)
+        if tenant_id:
+            query = query.where(TaskModel.tenant_id == tenant_id)
+        result = await db.execute(query)
         task = result.scalar_one_or_none()
         if not task:
             return None
             
         return TaskResponse(
             task_id=task.id,
+            tenant_id=task.tenant_id,
             state=TaskState(task.state),
             mode=task.mode,
             user_request=task.user_request,

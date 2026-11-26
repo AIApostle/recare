@@ -12,6 +12,19 @@ import { StorageService } from './storage';
 
 let cachedApiUrl: string | null = null;
 
+const getHeaders = async (extra?: Record<string, string>): Promise<Record<string, string>> => {
+  let deviceId = 'unknown_client';
+  try {
+    deviceId = await StorageService.getDeviceId();
+  } catch {}
+  return {
+    'Content-Type': 'application/json',
+    'X-Device-Id': deviceId,
+    'X-Tenant-Id': deviceId,
+    ...(extra || {}),
+  };
+};
+
 export const getApiBaseUrl = async (): Promise<string> => {
   if (cachedApiUrl) return cachedApiUrl;
   try {
@@ -68,7 +81,8 @@ export class RecareApiClient {
   static async listTasks(limit: number = 20): Promise<TaskResponse[]> {
     try {
       const baseUrl = await getApiBaseUrl();
-      const res = await fetch(`${baseUrl}/api/v1/tasks?limit=${limit}`);
+      const headers = await getHeaders();
+      const res = await fetch(`${baseUrl}/api/v1/tasks?limit=${limit}`, { headers });
       if (!res.ok) return [];
       return await res.json();
     } catch {
@@ -178,13 +192,16 @@ export class RecareApiClient {
     } catch {}
 
     const baseUrl = await getApiBaseUrl();
+    const headers = await getHeaders();
+    const deviceId = await StorageService.getDeviceId();
     const res = await fetch(`${baseUrl}/api/v1/tasks`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         user_request: userRequest,
         mode,
         page_context: pageContext,
+        tenant_id: deviceId,
       }),
     });
     if (!res.ok) {

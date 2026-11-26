@@ -57,7 +57,7 @@ export class DomHighlighter {
   static highlightElement(
     element: HTMLElement,
     label: string = 'Recommended Control',
-    autoDismissSeconds: number = 6.5
+    autoDismissSeconds: number = 20
   ): void {
     this.clearHighlights();
     const container = this.getOrCreateContainer();

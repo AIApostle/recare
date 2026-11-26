@@ -13,6 +13,17 @@ export const ApprovalPrompt: React.FC<ApprovalPromptProps> = ({
   onApprove,
   onReject,
 }) => {
+  // User-friendly target label without technical IDs like elem_1
+  const cleanTargetDescription = React.useMemo(() => {
+    const raw = (request.target_description || '').trim();
+    if (/^elem_\d+$/i.test(raw)) {
+      const match = request.reason?.match(/(?:highlighting|for|on|into|to|with)\s+['"]?([^'"]+)['"]?/i);
+      return match ? match[1].trim() : 'Interactive control on page';
+    }
+    const sanitized = raw.replace(/\[?elem_\d+\]?/gi, '').trim();
+    return sanitized || 'Active control on page';
+  }, [request.target_description, request.reason]);
+
   return (
     <div
       role="alertdialog"
@@ -41,7 +52,7 @@ export const ApprovalPrompt: React.FC<ApprovalPromptProps> = ({
 
           <div className="mt-2.5 p-2 bg-white rounded-lg border border-amber-200 text-xs">
             <div className="font-semibold text-gray-800">Target:</div>
-            <div className="text-gray-600 font-mono text-[11px] truncate">{request.target_description}</div>
+            <div className="text-gray-700 text-xs font-medium truncate">{cleanTargetDescription}</div>
             {request.affected_domain && (
               <div className="mt-1 text-[11px] text-gray-500">
                 Website: <span className="font-medium text-gray-700">{request.affected_domain}</span>

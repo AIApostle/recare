@@ -279,6 +279,8 @@ class RecareAgentOrchestrator:
         """Execute one reasoning/execution step of a task."""
         ctx = page_context or {}
         set_page_context_store(ctx)
+        title = ctx.get("title") or ctx.get("domain") or "this page"
+        domain = ctx.get("domain", "")
         elements = ctx.get("interactive_elements", [])
         
         # Build plan
@@ -299,15 +301,22 @@ class RecareAgentOrchestrator:
         if mode == "guide":
             target_el = elements[0] if elements else None
             action = None
+            label = "relevant control"
             if target_el:
+                label = target_el.get("accessible_name") or target_el.get("text") or target_el.get("tag") or "control"
                 action = BrowserAction(
                     action_id=f"act_hl_{uuid.uuid4().hex[:8]}",
                     type=ActionType.HIGHLIGHT,
-                    target=BrowserActionTarget(element_id=target_el.get("element_id")),
-                    reason=f"Highlight relevant control for guide mode: {target_el.get('accessible_name') or 'control'}",
+                    target=BrowserActionTarget(
+                        element_id=target_el.get("element_id"),
+                        accessible_name=label,
+                        role=target_el.get("role") or target_el.get("tag"),
+                    ),
+                    reason=f"Highlighting {label}",
                     risk_level="LOW",
                     requires_approval=False,
                 )
+            guide_reply = f"I've highlighted '{label}' for you on this page." if target_el else f"You are viewing '{title}'. What would you like guidance on?"
             return TaskResponse(
                 task_id=task_id,
                 state=TaskState.COMPLETED,
@@ -315,8 +324,8 @@ class RecareAgentOrchestrator:
                 user_request=user_request,
                 plan=plan,
                 current_action=action,
-                message="Guide mode is active: I highlight controls without clicking. To have me execute actions or search for you automatically, switch to Assist or Auto mode above.",
-                completion_summary="Guided step provided without executing browser actions.",
+                message=guide_reply,
+                completion_summary=f"Highlighted {label}." if target_el else "Guided context provided.",
             )
 
         # ASSIST / AUTONOMOUS mode execution logic:
