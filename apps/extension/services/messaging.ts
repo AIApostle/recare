@@ -197,6 +197,18 @@ export class MessagingService {
             }
           } catch {}
         }
+        if (action.value && (action.value.startsWith('http://') || action.value.startsWith('https://'))) {
+          try {
+            await chrome.tabs.update(tabId, { url: action.value });
+            await this.waitForPageSettle();
+            return {
+              action_id: action.action_id,
+              success: true,
+              current_url: action.value,
+              observed_changes: { url_changed: true, navigated: true },
+            };
+          } catch {}
+        }
       }
     }
 

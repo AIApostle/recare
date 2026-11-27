@@ -393,10 +393,25 @@ export class FirebaseAiService {
       };
     }
 
-    // 2. Search intent
-    if (lower.startsWith('search for ') || lower.includes('search bar') || lower.includes('search on ')) {
-      const searchMatch = raw.match(/search(?:\s+for)?\s+(?:something\s+on\s+the\s+search\s+bar\s+maybe\s+)?(?:maybe\s+)?([^,.]+)/i);
-      const query = searchMatch ? searchMatch[1].replace(/^(?:something\s+on\s+the\s+search\s+bar\s+maybe|maybe)\s+/i, '').trim() : '';
+    // 2. Search intent (e.g. "search for X", "search Google for X", "look up X", "find X", "can you search X")
+    const isSearchIntent =
+      lower.includes('search') ||
+      lower.includes('look up') ||
+      lower.startsWith('find ') ||
+      lower.includes('google for') ||
+      lower.includes('search bar');
+
+    if (isSearchIntent) {
+      const searchMatch = raw.match(
+        /(?:can you\s+|please\s+)?(?:search(?:\s+for|\s+google|\s+the\s+web|\s+online|\s+on\s+google|\s+something\s+on\s+the\s+search\s+bar\s+maybe|\s+on\s+the\s+search\s+bar)?|look\s+up|find(?:\s+me)?|google)\s+(?:maybe\s+)?([^,.]+)/i
+      );
+      let query = searchMatch
+        ? searchMatch[1].replace(/^(?:something\s+on\s+the\s+search\s+bar\s+maybe|maybe)\s+/i, '').trim()
+        : '';
+      if (!query || query.toLowerCase() === 'something') {
+        const cleaned = raw.replace(/(?:can you|please|search for|search on|search bar|search|look up|find|in the|on the)/gi, '').trim();
+        if (cleaned) query = cleaned;
+      }
 
       // Find search input on page if available
       const searchInput = pageContext.interactive_elements.find(
@@ -416,13 +431,14 @@ export class FirebaseAiService {
             accessible_name: searchInput.accessible_name,
           },
           value: query,
+          options: { submit: true, submit_search: true },
           risk_level: 'LOW',
           requires_approval: false,
           reason: `Searching for "${query}" on active page`,
         };
       }
 
-      if (query) {
+      if (query && query.toLowerCase() !== 'search') {
         return {
           action_id: crypto.randomUUID(),
           type: 'NAVIGATE',
@@ -433,6 +449,16 @@ export class FirebaseAiService {
           reason: `Searching for "${query}" on Google`,
         };
       }
+
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'NAVIGATE',
+        value: 'https://www.google.com',
+        options: { url: 'https://www.google.com' },
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: 'Opening Google Search in browser',
+      };
     }
 
     // 3. Form filling on-device

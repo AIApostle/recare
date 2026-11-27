@@ -223,7 +223,7 @@ class RecareAgentOrchestrator:
                 pass
 
         system_instruction = (
-            f"You are Recare, an accessibility AI browser assistant. "
+            f"You are Recare, an accessibility AI browser assistant with full browser navigation, search, and research capabilities. "
             f"The user is currently viewing the page '{title}' on domain '{domain}'. "
             f"URL: {ctx.get('url', '')}. "
             f"Headings: {h_str}. "
@@ -231,6 +231,7 @@ class RecareAgentOrchestrator:
             f"{research_context}"
             f"Answer the user's question directly in clear, natural, everyday language. "
             f"If the user asks what page they are on, what site this is, or where they are, warmly and directly tell them the current page title ('{title}') and website ('{domain}'), and summarize what it is. "
+            f"If the user asks if you can search, browse, or why you can't search: warmly confirm that you CAN search the web and navigate the browser. Explain that you can search on the current webpage's search bar, navigate to Google directly, or conduct online background research. "
             f"When explaining what a website is about, explain its purpose, key features, and what the user can do there. "
             f"NEVER mention internal IDs like [elem_1] or elem_4, and NEVER refer to the browser extension itself as the webpage."
             + (" Use very simple, plain language." if simplified else "")
@@ -696,6 +697,21 @@ class RecareAgentOrchestrator:
                 generated_document=gen_doc,
             )
 
+        # Direct Google / Web Search intent
+        if re.search(r"\b(search (?:on )?google|google for|look up on google|search the web for|search online for)\b", req_lower):
+            g_query = self._extract_search_query(user_request)
+            if g_query and g_query.lower() not in {"it", "that", "something", "this", "anything", "stuff"}:
+                return _build_action_response(
+                    BrowserAction(
+                        action_id=f"act_{uuid.uuid4().hex[:8]}",
+                        type=ActionType.NAVIGATE,
+                        value=f"https://www.google.com/search?q={urllib.parse.quote(g_query)}",
+                        reason=f"Searching for '{g_query}' on Google",
+                    ),
+                    completion_reply=f"Done — I searched for '{g_query}' on Google for you.",
+                    target_label=f"Google Search: {g_query}",
+                )
+
         # 0. Direct Browser-Level Navigation, Tabs, & Scrolling Intents
         if re.search(r"\b(open (?:a )?new tab|new tab|create (?:a )?new tab|play new tab)\b", req_lower):
             return _build_action_response(
@@ -873,14 +889,15 @@ class RecareAgentOrchestrator:
         try:
             from strands.types.content import Message
             agent_prompt = (
-                f"You are Recare, an autonomous browser agent.\n"
+                f"You are Recare, an autonomous browser agent with full search and browsing capabilities.\n"
                 f"User Request: \"{user_request}\"\n"
                 f"Current Page: \"{ctx.get('title', '')}\" ({ctx.get('url', '')})\n"
                 f"Controls:\n{elements_summary}\n\n"
                 f"Choose the single best browser operation to fulfill the user's request.\n"
                 f"Rules:\n"
-                f"- For searching on the page, choose action 'FILL' on the search <input>, set 'value' to ONLY the exact search query, and set 'submit': true.\n"
-                f"- If a search box is hidden behind a Search icon button, choose 'CLICK' on that button.\n"
+                f"- For searching: If a search <input> or text input is visible on the page, choose action 'FILL' on that element, set 'value' to the query, and set 'submit': true.\n"
+                f"- If a search button or search icon is present on the page (e.g. button with text/label 'Search'), you MUST choose 'CLICK' on that matching element_id to open the site's search bar.\n"
+                f"- Only if there is NO search input and NO search button on the current page (or user explicitly asks to search Google/the web): choose action 'NAVIGATE' with 'value': 'https://www.google.com/search?q=<query_encoded>' to perform the search directly on Google in the browser.\n"
                 f"- For going back/forward/reloading, choose 'NAVIGATE' with 'value': '__BACK__', '__FORWARD__', or '__RELOAD__'.\n"
                 f"- For clicking links/buttons/closing modals, choose 'CLICK' on the matching element_id.\n"
                 f"- Write 'completion_reply' in warm, simple past tense confirming the result (never mention element IDs or technical steps).\n"
@@ -896,16 +913,35 @@ class RecareAgentOrchestrator:
             if parsed:
                 act_str = str(parsed.get("action", "")).upper()
                 if act_str == "NAVIGATE" and parsed.get("value"):
-                    return _build_action_response(
-                        BrowserAction(
-                            action_id=f"act_{uuid.uuid4().hex[:8]}",
-                            type=ActionType.NAVIGATE,
-                            value=str(parsed["value"]),
-                            reason=str(parsed.get("completion_reply") or "Navigating"),
-                        ),
-                        completion_reply=str(parsed.get("completion_reply") or "I navigated to the page for you."),
-                        target_label=str(parsed["value"]),
+                    target_url = str(parsed["value"])
+                    # If LLM proposed external search navigation but the current page already has a Search button or input,
+                    # and user did not specifically ask for Google/web search, prioritize the page's search control!
+                    search_btn_on_page = next(
+                        (e for e in elements if "search" in f"{e.get('accessible_name', '')} {e.get('text', '')}".lower()),
+                        None
                     )
+                    user_wants_external = any(w in req_lower for w in ["google", "the web", "online", "externally"])
+                    if "google.com/search" in target_url and search_btn_on_page and not user_wants_external:
+                        candidate_el = search_btn_on_page
+                        action_type = ActionType.FILL if search_btn_on_page.get("tag") in ["input", "textarea"] else ActionType.CLICK
+                        if action_type == ActionType.FILL:
+                            val = self._extract_search_query(user_request)
+                            action_options = {"submit": True, "submit_search": True}
+                        else:
+                            extra_meta["follow_up_search_query"] = self._extract_search_query(user_request)
+                        completion_reply = str(parsed.get("completion_reply") or f"I opened {search_btn_on_page.get('accessible_name') or 'Search'} for you.")
+                    else:
+                        label = "Google Search" if "google.com/search" in target_url else target_url
+                        return _build_action_response(
+                            BrowserAction(
+                                action_id=f"act_{uuid.uuid4().hex[:8]}",
+                                type=ActionType.NAVIGATE,
+                                value=target_url,
+                                reason=str(parsed.get("completion_reply") or f"Navigating to {label}"),
+                            ),
+                            completion_reply=str(parsed.get("completion_reply") or f"I searched for your query for you."),
+                            target_label=label,
+                        )
                 if act_str == "SCROLL":
                     return _build_action_response(
                         BrowserAction(
@@ -979,6 +1015,31 @@ class RecareAgentOrchestrator:
                             else:
                                 completion_reply = "I opened the search bar for you. What would you like to search for?"
                             break
+
+                    # If no search element exists on the active page, CREATE the search action by navigating directly to Google!
+                    if not candidate_el:
+                        if not is_generic and query:
+                            return _build_action_response(
+                                BrowserAction(
+                                    action_id=f"act_{uuid.uuid4().hex[:8]}",
+                                    type=ActionType.NAVIGATE,
+                                    value=f"https://www.google.com/search?q={urllib.parse.quote(query)}",
+                                    reason=f"Searching for '{query}' on Google",
+                                ),
+                                completion_reply=f"Done — I searched for '{query}' on Google for you.",
+                                target_label=f"Google Search: {query}",
+                            )
+                        else:
+                            return _build_action_response(
+                                BrowserAction(
+                                    action_id=f"act_{uuid.uuid4().hex[:8]}",
+                                    type=ActionType.NAVIGATE,
+                                    value="https://www.google.com",
+                                    reason="Opening Google Search in browser",
+                                ),
+                                completion_reply="I opened Google Search for you. What would you like to search for?",
+                                target_label="Google Search",
+                            )
 
             elif any(k in req_lower for k in ["signin", "sign in", "login", "log in", "account"]):
                 for el in elements:
