@@ -409,3 +409,40 @@ async def test_testbench_real_browser_actions():
         assert flow_data["pending_approval"] is not None
         assert flow_data["pending_approval"]["risk_level"] == "HIGH"
         assert flow_data["current_action"]["target"]["element_id"] == "btn_pay"
+
+@pytest.mark.asyncio
+async def test_browser_scroll_and_search_capabilities():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Scroll down
+        scroll_down_res = await client.post("/api/v1/tasks", json={
+            "user_request": "can you scroll the page down please",
+            "mode": "assist",
+            "page_context": {"url": "https://example.com", "domain": "example.com", "title": "Example", "headings": [], "interactive_elements": []},
+        })
+        assert scroll_down_res.status_code == 201
+        sd_data = scroll_down_res.json()
+        assert sd_data["current_action"]["type"] == "SCROLL"
+        assert sd_data["current_action"]["options"]["deltaY"] > 0
+
+        # 2. Scroll up to top
+        scroll_up_res = await client.post("/api/v1/tasks", json={
+            "user_request": "scroll back to top",
+            "mode": "assist",
+            "page_context": {"url": "https://example.com", "domain": "example.com", "title": "Example", "headings": [], "interactive_elements": []},
+        })
+        assert scroll_up_res.status_code == 201
+        su_data = scroll_up_res.json()
+        assert su_data["current_action"]["type"] == "SCROLL"
+        assert su_data["current_action"]["options"]["deltaY"] < 0
+
+        # 3. Direct Google Web search navigation when no search bar on page
+        search_nav_res = await client.post("/api/v1/tasks", json={
+            "user_request": "search google for latest web accessibility standards",
+            "mode": "assist",
+            "page_context": {"url": "https://example.com", "domain": "example.com", "title": "Example", "headings": [], "interactive_elements": []},
+        })
+        assert search_nav_res.status_code == 201
+        sn_data = search_nav_res.json()
+        assert sn_data["current_action"]["type"] == "NAVIGATE"
+        assert "google.com/search" in sn_data["current_action"]["value"]

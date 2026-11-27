@@ -60,3 +60,50 @@ def highlight_element(element_id: str, label: str = "Relevant Control") -> str:
     )
     _PROPOSED_ACTIONS.append(action)
     return f"Highlighted element {element_id} for user with label '{label}'."
+
+@tool
+def scroll_webpage(direction: str = "down", amount: int = 550) -> str:
+    """Scroll the active webpage or browser window up or down to reveal more content.
+    Args:
+        direction: 'down', 'up', 'top', or 'bottom'.
+        amount: Number of pixels to scroll (defaults to 550).
+    """
+    d_lower = direction.lower().strip()
+    if d_lower == "bottom":
+        delta = 99999
+    elif d_lower == "top":
+        delta = -99999
+    elif d_lower == "up":
+        delta = -abs(amount)
+    else:
+        delta = abs(amount)
+
+    action = BrowserAction(
+        action_id=f"act_sc_{uuid.uuid4().hex[:8]}",
+        type=ActionType.SCROLL,
+        options={"deltaY": delta, "delta_y": delta},
+        reason=f"Scrolling {direction} the page",
+        risk_level="LOW",
+        requires_approval=False,
+    )
+    _PROPOSED_ACTIONS.append(action)
+    return f"Requested browser scroll {direction} by {abs(delta)}px."
+
+@tool
+def search_the_web_in_browser(query: str) -> str:
+    """Search the web directly in the user's browser by navigating to Google search.
+    Args:
+        query: The search terms or question to look up.
+    """
+    import urllib.parse
+    clean_q = urllib.parse.quote(query.strip())
+    action = BrowserAction(
+        action_id=f"act_sr_{uuid.uuid4().hex[:8]}",
+        type=ActionType.NAVIGATE,
+        value=f"https://www.google.com/search?q={clean_q}",
+        reason=f"Searching for '{query}' on Google",
+        risk_level="LOW",
+        requires_approval=False,
+    )
+    _PROPOSED_ACTIONS.append(action)
+    return f"Navigating browser to Google Search for '{query}'."

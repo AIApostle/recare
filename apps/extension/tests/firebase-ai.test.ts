@@ -293,6 +293,24 @@ describe('On-Device Local Action Planning & ONLY_ON_DEVICE Mode', () => {
     expect(action?.value?.toLowerCase()).toContain('social network');
   });
 
+  it('plans browser scrolling down and up on-device', async () => {
+    const downAction = await FirebaseAiService.planLocalAction(
+      'can you scroll down the page please',
+      sampleContext
+    );
+    expect(downAction).not.toBeNull();
+    expect(downAction?.type).toBe('SCROLL');
+    expect(downAction?.options?.deltaY).toBeGreaterThan(0);
+
+    const upAction = await FirebaseAiService.planLocalAction(
+      'scroll up to the top',
+      sampleContext
+    );
+    expect(upAction).not.toBeNull();
+    expect(upAction?.type).toBe('SCROLL');
+    expect(upAction?.options?.deltaY).toBeLessThan(0);
+  });
+
   it('strictly runs on-device without calling Render cloud in ONLY_ON_DEVICE mode', async () => {
     const sendChatSpy = vi.spyOn(RecareApiClient, 'sendChat');
     const res = await FirebaseAiService.explainPageLocally(

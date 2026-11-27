@@ -393,6 +393,30 @@ export class FirebaseAiService {
       };
     }
 
+    // 1.5. Browser scrolling on-device
+    if (
+      lower.includes('scroll') ||
+      lower.includes('page down') ||
+      lower.includes('page up') ||
+      lower.includes('move down') ||
+      lower.includes('move up')
+    ) {
+      const isUp = lower.includes('up') || lower.includes('top');
+      const isAllWay = lower.includes('bottom') || lower.includes('all the way') || lower.includes('top');
+      let delta = isUp ? -600 : 600;
+      if (isAllWay) {
+        delta = isUp ? -99999 : 99999;
+      }
+      return {
+        action_id: crypto.randomUUID(),
+        type: 'SCROLL',
+        options: { deltaY: delta, delta_y: delta },
+        risk_level: 'LOW',
+        requires_approval: false,
+        reason: isUp ? 'Scrolling up the webpage' : 'Scrolling down the webpage',
+      };
+    }
+
     // 2. Search intent (e.g. "search for X", "search Google for X", "look up X", "find X", "can you search X")
     const isSearchIntent =
       lower.includes('search') ||

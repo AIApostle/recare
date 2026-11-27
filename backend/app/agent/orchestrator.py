@@ -1,5 +1,6 @@
 import json
 import re
+import urllib.parse
 import uuid
 from typing import Optional, Dict, Any, List
 from strands import Agent
@@ -223,7 +224,7 @@ class RecareAgentOrchestrator:
                 pass
 
         system_instruction = (
-            f"You are Recare, an accessibility AI browser assistant with full browser navigation, search, and research capabilities. "
+            f"You are Recare, an accessibility AI browser assistant with full browser scrolling, navigation, search, and research capabilities. "
             f"The user is currently viewing the page '{title}' on domain '{domain}'. "
             f"URL: {ctx.get('url', '')}. "
             f"Headings: {h_str}. "
@@ -231,7 +232,7 @@ class RecareAgentOrchestrator:
             f"{research_context}"
             f"Answer the user's question directly in clear, natural, everyday language. "
             f"If the user asks what page they are on, what site this is, or where they are, warmly and directly tell them the current page title ('{title}') and website ('{domain}'), and summarize what it is. "
-            f"If the user asks if you can search, browse, or why you can't search: warmly confirm that you CAN search the web and navigate the browser. Explain that you can search on the current webpage's search bar, navigate to Google directly, or conduct online background research. "
+            f"If the user asks if you can scroll, search, browse, or what your capabilities are: warmly confirm that you CAN scroll the browser up/down/top/bottom, search within the webpage, navigate directly to Google to search the web, and conduct online background research. "
             f"When explaining what a website is about, explain its purpose, key features, and what the user can do there. "
             f"NEVER mention internal IDs like [elem_1] or elem_4, and NEVER refer to the browser extension itself as the webpage."
             + (" Use very simple, plain language." if simplified else "")
@@ -800,28 +801,38 @@ class RecareAgentOrchestrator:
                 target_label="Reload",
             )
 
-        if re.search(r"\b(scroll down|page down|move down)\b", req_lower):
+        # 1. Scroll Up / Top (checked before general scroll)
+        if re.search(r"\b(scroll\s+up|scroll\s+(?:the\s+)?(?:page|screen|browser)\s+up|page\s+up|move\s+up|scroll\s+to\s+top|back\s+to\s+top|to\s+the\s+top|top\s+of\s+page)\b", req_lower):
+            delta = -600
+            if "top" in req_lower:
+                delta = -99999
             return _build_action_response(
                 BrowserAction(
                     action_id=f"act_{uuid.uuid4().hex[:8]}",
                     type=ActionType.SCROLL,
-                    options={"deltaY": 550},
-                    reason="Scrolling down",
+                    options={"deltaY": delta, "delta_y": delta},
+                    reason="Scrolling up the page",
                 ),
-                completion_reply="I scrolled down the page.",
-                target_label="Scroll Down",
+                completion_reply="I scrolled up the page for you.",
+                target_label="Scroll Up",
             )
 
-        if re.search(r"\b(scroll up|page up|scroll to top|back to top)\b", req_lower):
+        # 2. Scroll Down / Bottom / General Scroll
+        if re.search(r"\b(scroll|page\s+down|move\s+down)\b", req_lower):
+            delta = 600
+            if "bottom" in req_lower or "all the way" in req_lower or "to the end" in req_lower:
+                delta = 99999
+            elif "more" in req_lower or "further" in req_lower:
+                delta = 950
             return _build_action_response(
                 BrowserAction(
                     action_id=f"act_{uuid.uuid4().hex[:8]}",
                     type=ActionType.SCROLL,
-                    options={"deltaY": -550},
-                    reason="Scrolling up",
+                    options={"deltaY": delta, "delta_y": delta},
+                    reason="Scrolling down the page",
                 ),
-                completion_reply="I scrolled up the page.",
-                target_label="Scroll Up",
+                completion_reply="I scrolled down the page for you.",
+                target_label="Scroll Down",
             )
 
         candidate_el = None
@@ -895,6 +906,7 @@ class RecareAgentOrchestrator:
                 f"Controls:\n{elements_summary}\n\n"
                 f"Choose the single best browser operation to fulfill the user's request.\n"
                 f"Rules:\n"
+                f"- For scrolling: choose action 'SCROLL' with 'deltaY': 550 (to scroll down) or 'deltaY': -550 (to scroll up), and set 'completion_reply': 'I scrolled the page for you.'\n"
                 f"- For searching: If a search <input> or text input is visible on the page, choose action 'FILL' on that element, set 'value' to the query, and set 'submit': true.\n"
                 f"- If a search button or search icon is present on the page (e.g. button with text/label 'Search'), you MUST choose 'CLICK' on that matching element_id to open the site's search bar.\n"
                 f"- Only if there is NO search input and NO search button on the current page (or user explicitly asks to search Google/the web): choose action 'NAVIGATE' with 'value': 'https://www.google.com/search?q=<query_encoded>' to perform the search directly on Google in the browser.\n"

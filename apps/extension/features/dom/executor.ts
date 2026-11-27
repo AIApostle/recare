@@ -203,9 +203,45 @@ export class DomExecutor {
         }
 
         case 'SCROLL': {
-          const deltaY = action.options?.deltaY ?? action.options?.delta_y ?? 400;
-          window.scrollBy({ top: deltaY, behavior: 'smooth' });
-          await new Promise((r) => setTimeout(r, 300));
+          const deltaY = action.options?.deltaY ?? action.options?.delta_y ?? 550;
+          const deltaX = action.options?.deltaX ?? action.options?.delta_x ?? 0;
+          const beforeY = window.scrollY;
+
+          if (deltaY >= 90000) {
+            // Scroll to bottom of webpage
+            window.scrollTo({ top: Math.max(document.body?.scrollHeight || 0, document.documentElement?.scrollHeight || 0), behavior: 'smooth' });
+          } else if (deltaY <= -90000) {
+            // Scroll to top of webpage
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          } else {
+            window.scrollBy({ top: deltaY, left: deltaX, behavior: 'smooth' });
+          }
+
+          // If the page body or window did not move (common in SPA scrollable containers), scroll the inner scrollable container
+          setTimeout(() => {
+            if (window.scrollY === beforeY) {
+              const scrollable = Array.from(document.querySelectorAll<HTMLElement>('*')).find((el) => {
+                try {
+                  const style = window.getComputedStyle(el);
+                  const canScroll = (style.overflowY === 'auto' || style.overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+                  return canScroll && el.clientHeight > 200;
+                } catch {
+                  return false;
+                }
+              });
+              if (scrollable) {
+                if (deltaY >= 90000) {
+                  scrollable.scrollTo({ top: scrollable.scrollHeight, behavior: 'smooth' });
+                } else if (deltaY <= -90000) {
+                  scrollable.scrollTo({ top: 0, behavior: 'smooth' });
+                } else {
+                  scrollable.scrollBy({ top: deltaY, left: deltaX, behavior: 'smooth' });
+                }
+              }
+            }
+          }, 60);
+
+          await new Promise((r) => setTimeout(r, 350));
           return { action_id: action.action_id, success: true, current_url: window.location.href };
         }
 
